@@ -53,6 +53,19 @@
   </aside>
 
   <main class="main">
+    {% if password_missing %}
+    <div class="alert warning" style="margin-bottom:16px">
+      <span class="ico">⚠</span>
+      <div class="grow">
+        <strong>Le mot de passe est exigé mais aucun n'est défini.</strong>
+        L'accès reste ouvert par Home Assistant, qui vous authentifie déjà —
+        mais l'accès direct, lui, est fermé tant que vous n'en avez pas posé un.
+        <div style="margin-top:8px">
+          <a class="btn sm" href="{{ url_for('settings_page') }}">Définir un mot de passe</a>
+        </div>
+      </div>
+    </div>
+    {% endif %}
     {% block content %}{% endblock %}
   </main>
 </div>

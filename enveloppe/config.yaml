@@ -1,5 +1,5 @@
 name: Enveloppe — Budget
-version: "1.2.0"
+version: "1.2.1"
 slug: enveloppe
 description: >-
   Suivi de budget en mode enveloppe : import de relevés bancaires,
@@ -25,7 +25,10 @@ panel_admin: true
 ports:
   8099/tcp: null
 ports_description:
-  8099/tcp: Accès direct hors ingress — laisser vide sauf besoin explicite
+  8099/tcp: >-
+    Accès direct hors ingress, par exemple depuis Tailscale. Publier ce port
+    n'a de sens qu'avec l'option require_login activée et un mot de passe
+    défini dans les Réglages de l'application.
 
 # /data est persistant et inclus dans les sauvegardes Home Assistant.
 options:

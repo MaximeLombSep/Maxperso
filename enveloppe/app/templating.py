@@ -105,7 +105,9 @@ def render(request: Request, template: str, **context) -> Response:
     """Rendu d'une page avec le contexte partagé par toutes les vues."""
     base = {
         "version": __version__,
-        "login_required": login_required(request),
+        "login_required": login_required(request)
+        and not getattr(request.state, "auth_bypassed", False),
+        "password_missing": getattr(request.state, "password_missing", False),
         # Posé par SecurityMiddleware, y compris lors de la toute première
         # requête d'un navigateur qui n'a pas encore le cookie.
         "csrf_token": getattr(request.state, "csrf_token", "")

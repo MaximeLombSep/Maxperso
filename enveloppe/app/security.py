@@ -134,8 +134,19 @@ def current_user(
     request: Request, db: Session = Depends(get_session)
 ) -> User:
     """Dépendance : exige une session valide, sinon 401."""
-    if not login_required(request):
-        return ensure_installed(db)
+    if through_ingress(request):
+        if not settings.require_login:
+            request.state.auth_bypassed = True
+            return ensure_installed(db)
+
+        # Option activée alors qu'aucun mot de passe n'a encore été posé :
+        # l'exiger enfermerait dehors, y compris par l'ingress. Home Assistant
+        # reste la porte le temps d'en définir un depuis les Réglages.
+        existant = db.scalar(select(User))
+        if existant is not None and not existant.password_hash:
+            request.state.auth_bypassed = True
+            request.state.password_missing = True
+            return existant
 
     token = request.cookies.get(SESSION_COOKIE)
     payload = read_session(token) if token else None
