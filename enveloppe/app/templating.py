@@ -16,7 +16,7 @@ from starlette.responses import Response
 
 from . import __version__
 from .config import settings
-from .security import CSRF_COOKIE, login_required
+from .security import CSRF_COOKIE, login_required, through_ingress
 from .services.budget import current_period, period_label
 from .services.money import format_cents, format_cents_short
 
@@ -108,6 +108,7 @@ def render(request: Request, template: str, **context) -> Response:
         "login_required": login_required(request)
         and not getattr(request.state, "auth_bypassed", False),
         "password_missing": getattr(request.state, "password_missing", False),
+        "through_ingress": through_ingress(request),
         # Posé par SecurityMiddleware, y compris lors de la toute première
         # requête d'un navigateur qui n'a pas encore le cookie.
         "csrf_token": getattr(request.state, "csrf_token", "")

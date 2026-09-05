@@ -32,9 +32,13 @@
     <p class="small dim">Aucun mot de passe n'est défini : l'accès passe uniquement par
       Home Assistant, qui vous authentifie déjà. En poser un ici permet d'ouvrir aussi
       l'application en accès direct, hors de Home Assistant.</p>
+    {% elif through_ingress %}
+    <p class="small dim">Vous êtes passé par Home Assistant, qui vous a déjà authentifié
+      comme administrateur : l'ancien mot de passe n'est pas nécessaire. C'est aussi
+      la façon d'en reprendre un quand il a été perdu.</p>
     {% endif %}
     <div class="grid" style="gap:12px">
-      {% if not user or user.password_hash %}
+      {% if user and user.password_hash and not through_ingress %}
       <div class="field"><label for="p-current">Mot de passe actuel</label>
         <input id="p-current" name="current" type="password" autocomplete="current-password" required></div>
       {% endif %}

@@ -19,6 +19,7 @@ from ..security import (
     current_user,
     hash_password,
     password_problems,
+    through_ingress,
     verify_password,
 )
 from ..services import cards as cards_service
@@ -191,9 +192,15 @@ def change_password(
 ):
     response = RedirectResponse(path_for(request, "settings_page"), status_code=303)
 
-    # Un compte créé automatiquement par l'ingress n'a pas de mot de passe :
-    # on n'en exige donc pas un pour en poser le premier.
-    if user.password_hash and not verify_password(current, user.password_hash):
+    # L'ancien mot de passe n'est exigé que s'il existe ET que la requête
+    # n'est pas venue par Home Assistant. Derrière l'ingress, HA a déjà
+    # authentifié un administrateur : c'est la voie de récupération quand le
+    # mot de passe a été perdu, sans avoir à toucher à la base.
+    if (
+        user.password_hash
+        and not through_ingress(request)
+        and not verify_password(current, user.password_hash)
+    ):
         flash(response, "Mot de passe actuel incorrect.", "error")
         return response
     if new_password != confirm:
