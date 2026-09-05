@@ -118,6 +118,8 @@ def rule_from_suggestion(
     request: Request,
     pattern: str = Form(...),
     envelope_id: int = Form(...),
+    sign: str = Form("debit"),
+    next_url: str = Form(""),
     db: Session = Depends(get_session),
 ):
     """Accepte une suggestion : crée la règle et l'applique à l'historique."""
@@ -125,10 +127,12 @@ def rule_from_suggestion(
     if envelope is None:
         raise HTTPException(status_code=404, detail="Enveloppe introuvable.")
 
-    create_rule(db, pattern, envelope_id)
+    create_rule(db, pattern, envelope_id, sign=sign)
     classified = recategorize_all(db)
 
-    response = RedirectResponse(path_for(request, "rules_page"), status_code=303)
+    # La suggestion peut être acceptée depuis la mise en route : on y revient.
+    cible = next_url if next_url.startswith("/") else str(path_for(request, "rules_page"))
+    response = RedirectResponse(cible, status_code=303)
     flash(
         response,
         f"« {pattern} » ira désormais dans « {envelope.name} » — "

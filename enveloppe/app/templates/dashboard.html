@@ -78,6 +78,24 @@
 </div>
 {% endif %}
 
+{% if not setup_hidden and setup_progress[0] < setup_progress[1] %}
+<div class="card">
+  <div class="card-head">
+    <h2>Mise en route</h2>
+    <span class="pill accent">{{ setup_progress[0] }}/{{ setup_progress[1] }}</span>
+  </div>
+  <p class="small dim">Cinq étapes, dans l'ordre qui donne un budget juste : déclarer les comptes d'épargne, reconnaître ce qui entre, puis ce qui sort, calibrer, et rapprocher une première fois. Reprenable à tout moment.</p>
+  <div class="form-actions">
+    <form method="post" action="{{ url_for('onboarding_dismiss') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="hidden" value="on">
+      <button class="btn ghost" type="submit">Plus tard</button>
+    </form>
+    <a class="btn primary" href="{{ url_for('onboarding_home') }}">Continuer</a>
+  </div>
+</div>
+{% endif %}
+
 {% if money_age.known %}
 <div class="card">
   <div class="card-head">

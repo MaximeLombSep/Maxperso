@@ -11,7 +11,15 @@ from sqlalchemy.orm import Session
 from ..db import get_session
 from ..models import Account, Transaction
 from ..security import current_user
-from ..services import analytics, calibration, cards, categorizer, insurance, savings
+from ..services import (
+    analytics,
+    calibration,
+    cards,
+    categorizer,
+    insurance,
+    onboarding,
+    savings,
+)
 from ..services.budget import (
     account_balances,
     current_period,
@@ -93,6 +101,8 @@ def dashboard(
         review_proposals=calibration.review_pending(db, period),
         rule_suggestions=categorizer.suggest_rules(db, limit=5),
         money_age=analytics.money_age(db),
+        setup_progress=onboarding.progress(db),
+        setup_hidden=onboarding.dismissed(db),
         insurance_alerts=insurance.alerts(db),
         insurance_totals=insurance.totals(db),
         security=savings.security_fund(db),

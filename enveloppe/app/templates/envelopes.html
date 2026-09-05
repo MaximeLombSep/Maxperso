@@ -55,7 +55,7 @@
 <div class="card">
   <div class="card-head"><h2>{{ envelopes | length }} enveloppes</h2></div>
   <div class="table-wrap">
-    <table>
+    <table class="stack">
       <thead><tr>
         <th>Enveloppe</th><th>Groupe</th><th>Type</th>
         <th class="amount">Prévu / mois</th><th class="amount">Cible</th><th>Options</th><th></th>
@@ -63,23 +63,23 @@
       <tbody>
         {% for envelope in envelopes %}
         <tr>
-          <td><span class="env-chip" style="background:{{ envelope.color }};display:inline-grid;vertical-align:middle;margin-right:8px">{{ envelope.icon }}</span>
+          <td data-label=""><span class="env-chip" style="background:{{ envelope.color }};display:inline-grid;vertical-align:middle;margin-right:8px">{{ envelope.icon }}</span>
             <span class="strong">{{ envelope.name }}</span>
             {% if envelope.archived %}<span class="pill">archivée</span>{% endif %}</td>
-          <td class="small dim">{{ envelope.group.name if envelope.group else '—' }}</td>
-          <td class="small">
+          <td class="small dim" data-label="Groupe">{{ envelope.group.name if envelope.group else '—' }}</td>
+          <td class="small" data-label="Type">
             {% if envelope.kind == 'sinking' %}<span class="pill info">provision</span>
             {% elif envelope.kind == 'refill' %}<span class="pill accent">à recompléter</span>
             {% elif envelope.kind == 'income' %}<span class="pill pos">revenus</span>
             {% else %}<span class="pill">mensuelle</span>{% endif %}
           </td>
-          <td class="amount num">{{ envelope.planned_cents | money }}</td>
-          <td class="amount num">{% if envelope.target_cents %}{{ envelope.target_cents | money }}{% if envelope.target_date %} <span class="tiny mute">{{ envelope.target_date | date_fr('%m/%Y') }}</span>{% endif %}{% else %}—{% endif %}</td>
-          <td class="tiny mute">{% if envelope.rollover %}report{% endif %}{% if envelope.essential %} · essentiel{% endif %}</td>
-          <td><button class="btn ghost sm" type="button" data-toggle="#env-{{ envelope.id }}">Modifier</button></td>
+          <td class="amount num" data-label="Prévu / mois">{{ envelope.planned_cents | money }}</td>
+          <td class="amount num" data-label="Cible">{% if envelope.target_cents %}{{ envelope.target_cents | money }}{% if envelope.target_date %} <span class="tiny mute">{{ envelope.target_date | date_fr('%m/%Y') }}</span>{% endif %}{% else %}—{% endif %}</td>
+          <td class="tiny mute" data-label="Options">{% if envelope.rollover %}report{% endif %}{% if envelope.essential %} · essentiel{% endif %}</td>
+          <td data-label=""><button class="btn ghost sm" type="button" data-toggle="#env-{{ envelope.id }}">Modifier</button></td>
         </tr>
         <tr id="env-{{ envelope.id }}" class="hidden">
-          <td colspan="7" style="background:var(--surface-2)">
+          <td colspan="7" class="wide" style="background:var(--surface-2)">
             <form method="post" action="{{ url_for('envelope_update', envelope_id=envelope.id) }}">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
               <div class="form-grid">

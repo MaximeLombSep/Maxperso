@@ -28,6 +28,7 @@ from .routers import (
     dashboard,
     imports,
     insurance,
+    onboarding,
     rules,
     savings,
     transactions,
@@ -216,6 +217,7 @@ def create_app() -> FastAPI:
         rules.router,
         insurance.router,
         savings.router,
+        onboarding.router,
         analytics.router,
         accounts.router,
     ):

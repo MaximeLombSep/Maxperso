@@ -310,6 +310,36 @@
     });
   }
 
+
+  // ----- Mise en route : glisser pour changer d'étape ---------------------
+  // Le geste double les boutons, il ne les remplace pas : un parcours qui
+  // n'existerait qu'au doigt serait injouable au clavier.
+  function initFlow() {
+    var flow = document.querySelector("[data-flow]");
+    if (!flow) return;
+    var seuil = 60;
+    var departX = null;
+    var departY = null;
+
+    flow.addEventListener("touchstart", function (event) {
+      if (event.touches.length !== 1) return;
+      departX = event.touches[0].clientX;
+      departY = event.touches[0].clientY;
+    }, { passive: true });
+
+    flow.addEventListener("touchend", function (event) {
+      if (departX === null) return;
+      var fin = event.changedTouches[0];
+      var dx = fin.clientX - departX;
+      var dy = fin.clientY - departY;
+      departX = null;
+      // Un défilement vertical ne doit jamais déclencher un changement d'étape.
+      if (Math.abs(dx) < seuil || Math.abs(dx) < Math.abs(dy) * 1.6) return;
+      var cible = flow.getAttribute(dx < 0 ? "data-next" : "data-prev");
+      if (cible) window.location.href = cible;
+    }, { passive: true });
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
     initTheme();
     initSheet();
@@ -320,6 +350,7 @@
     initCover();
     initFilters();
     initChart();
+    initFlow();
   });
 
   // ----- Rapprochement : cocher toute la liste d'un geste ------------------

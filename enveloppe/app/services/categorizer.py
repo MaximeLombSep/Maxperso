@@ -435,6 +435,21 @@ def _seed_guess(db: Session, normalized: str) -> Envelope | None:
     return None
 
 
+def _income_guess(db: Session, normalized: str) -> Envelope | None:
+    """Enveloppe de revenus plausible pour une entrée récurrente.
+
+    À défaut de motif reconnu, « Salaire » est le pari le plus sûr : une
+    entrée qui revient tous les mois en est un neuf fois sur dix.
+    """
+    for pattern, envelope_name in SEED_RULES:
+        if not pattern.strip() or pattern.strip() not in normalized:
+            continue
+        envelope = _envelope_named(db, envelope_name)
+        if envelope is not None and envelope.kind == "income":
+            return envelope
+    return _envelope_named(db, "Salaire")
+
+
 def _learned_guess(db: Session, pattern: str) -> Envelope | None:
     """Enveloppe déjà retenue pour un libellé équivalent, classé à la main."""
     rows = db.execute(
@@ -449,20 +464,28 @@ def _learned_guess(db: Session, pattern: str) -> Envelope | None:
 
 
 def suggest_rules(
-    db: Session, limit: int = 15, min_count: int = 2
+    db: Session, limit: int = 15, min_count: int = 2, sign: str = "debit"
 ) -> list[RuleSuggestion]:
-    """Regroupe les dépenses non classées par commerçant et propose une enveloppe.
+    """Regroupe les opérations non classées par tiers et propose une enveloppe.
 
     C'est le pendant automatique du classement : après un import, plutôt que
     de laisser cinquante lignes orphelines, l'application montre les quelques
-    commerçants qui les expliquent et propose une règle pour chacun.
+    tiers qui les expliquent et propose une règle pour chacun.
+
+    `sign` sépare les deux moitiés du relevé : les dépenses par défaut, les
+    entrées quand on cherche un salaire ou une prestation.
     """
+    montant = (
+        Transaction.amount_cents > 0
+        if sign == "credit"
+        else Transaction.amount_cents < 0
+    )
     rows = db.execute(
         select(Transaction.id, Transaction.raw_label, Transaction.label, Transaction.amount_cents)
         .where(
             Transaction.envelope_id.is_(None),
             Transaction.kind != "transfer",
-            Transaction.amount_cents < 0,
+            montant,
         )
         .order_by(Transaction.op_date.desc())
     ).all()
@@ -483,13 +506,16 @@ def suggest_rules(
             },
         )
         bucket["count"] += 1
-        bucket["total"] += -amount
+        bucket["total"] += abs(amount)
 
     suggestions: list[RuleSuggestion] = []
     for pattern, bucket in groups.items():
         if bucket["count"] < min_count:
             continue
-        guess = _seed_guess(db, bucket["merchant"]) or _learned_guess(db, pattern)
+        if sign == "credit":
+            guess = _income_guess(db, bucket["merchant"]) or _learned_guess(db, pattern)
+        else:
+            guess = _seed_guess(db, bucket["merchant"]) or _learned_guess(db, pattern)
         suggestions.append(
             RuleSuggestion(
                 pattern=pattern,

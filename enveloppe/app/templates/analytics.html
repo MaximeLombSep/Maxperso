@@ -89,7 +89,7 @@
             <td class="amount num dim" data-label="Opérations">{{ count }}</td>
           </tr>
           {% else %}
-          <tr><td colspan="3"><div class="empty">Rien à afficher.</div></td></tr>
+          <tr><td colspan="3" class="wide"><div class="empty">Rien à afficher.</div></td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -127,7 +127,7 @@
     <span class="pill">{{ recurring | length }}</span>
   </div>
   <div class="table-wrap">
-    <table>
+    <table class="stack">
       <thead><tr>
         <th>Commerçant</th><th class="amount">Montant moyen</th><th class="amount">Par an</th>
         <th class="amount">Mois concernés</th><th>Dernier passage</th>
@@ -143,7 +143,7 @@
           <td class="small dim" data-label="Dernier passage">{{ item.last_seen | date_fr }}</td>
         </tr>
         {% else %}
-        <tr><td colspan="5"><div class="empty">Aucun prélèvement régulier identifié sur les 6 derniers mois.</div></td></tr>
+        <tr><td colspan="5" class="wide"><div class="empty">Aucun prélèvement régulier identifié sur les 6 derniers mois.</div></td></tr>
         {% endfor %}
       </tbody>
     </table>

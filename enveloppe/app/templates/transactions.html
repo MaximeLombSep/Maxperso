@@ -127,7 +127,7 @@
             </td>
           </tr>
           <tr id="tx-{{ tx.id }}" class="hidden">
-            <td colspan="7" style="background:var(--surface-2)">
+            <td colspan="7" class="wide" style="background:var(--surface-2)">
               <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
                 <div class="field" style="flex:1;min-width:240px">
                   <label>Note</label>
@@ -147,7 +147,7 @@
             </td>
           </tr>
           {% else %}
-          <tr><td colspan="7"><div class="empty"><div class="big">≡</div>Aucune opération sur ce filtre.</div></td></tr>
+          <tr><td colspan="7" class="wide"><div class="empty"><div class="big">≡</div>Aucune opération sur ce filtre.</div></td></tr>
           {% endfor %}
         </tbody>
       </table>

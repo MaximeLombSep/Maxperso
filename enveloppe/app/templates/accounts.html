@@ -68,7 +68,7 @@
           </td>
         </tr>
         <tr id="acc-{{ account.id }}" class="hidden">
-          <td colspan="7" style="background:var(--surface-2)">
+          <td colspan="7" class="wide" style="background:var(--surface-2)">
             <form method="post" action="{{ url_for('account_update', account_id=account.id) }}">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
               <div class="form-grid">
@@ -99,7 +99,7 @@
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="7"><div class="empty">Aucun compte.</div></td></tr>
+        <tr><td colspan="7" class="wide"><div class="empty">Aucun compte.</div></td></tr>
         {% endfor %}
       </tbody>
     </table>

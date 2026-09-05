@@ -1,0 +1,225 @@
+{% extends "base.html" %}
+{% block title %}{{ step.title }} — Mise en route{% endblock %}
+{% block content %}
+
+<div class="flow" data-flow
+     data-prev="{{ url_for('onboarding_step', slug=previous_slug) if previous_slug }}"
+     data-next="{{ url_for('onboarding_step', slug=next_slug) if next_slug }}">
+
+  <div class="flow-head">
+    <div class="flow-dots" aria-hidden="true">
+      {% for s in steps %}
+      <span class="dot-step {{ 'on' if s.slug == step.slug }} {{ 'ok' if s.done }}"></span>
+      {% endfor %}
+    </div>
+    <div class="flow-count">Étape {{ position }} sur {{ count }} · {{ done }}/{{ total }} terminées</div>
+  </div>
+
+  <h1>{{ step.title }}</h1>
+  <p class="flow-intro">{{ step.intro }}</p>
+
+  {# ------------------------------------------------------------------ #}
+  {% if not has_data and step.slug != 'pret' %}
+  <div class="card">
+    <div class="card-head"><h2>Il manque vos opérations</h2></div>
+    <p class="small dim">Tout le reste en dépend : sans relevé, l'application n'a rien à analyser. Un export CSV, OFX, ou le PDF que votre banque met à disposition.</p>
+    <div class="form-actions">
+      <a class="btn primary" href="{{ url_for('import_form') }}">Importer un relevé</a>
+    </div>
+  </div>
+
+  {# ------------------------------------------------------------------ #}
+  {% elif step.slug == 'comptes' %}
+  {% if savings_hints %}
+  <div class="card">
+    <div class="card-head">
+      <h2>{{ savings_hints | length }} destination{{ 's' if savings_hints | length > 1 }} d'épargne repérée{{ 's' if savings_hints | length > 1 }}</h2>
+    </div>
+    {% for hint in savings_hints %}
+    <form class="suggestion" method="post" action="{{ url_for('savings_account_declare') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="pattern" value="{{ hint.pattern }}">
+      <div class="who">
+        <strong class="truncate">{{ hint.suggested_name }}</strong>
+        <div class="tiny mute">{{ hint.count }} versement{{ 's' if hint.count > 1 }} · environ {{ hint.monthly_cents | money_short }} par mois</div>
+      </div>
+      <div class="act">
+        <input name="name" type="text" value="{{ hint.suggested_name }}" aria-label="Nom du compte" required>
+        <input name="balance" type="text" inputmode="decimal" placeholder="Solde actuel" aria-label="Solde actuel">
+        <button class="btn sm primary" type="submit">Déclarer</button>
+      </div>
+    </form>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="card ok-card">
+    <p class="small"><strong>Rien à déclarer.</strong> Aucun virement vers une épargne non déclarée dans vos relevés.</p>
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <div class="card-head"><h2>{{ accounts | length }} compte{{ 's' if accounts | length > 1 }}</h2>
+      <a class="btn sm ghost" href="{{ url_for('accounts_page') }}">Gérer</a></div>
+    <div class="list">
+      {% for account in accounts %}
+      <div class="list-item">
+        <span class="pill">{{ account.kind }}</span>
+        <span class="grow truncate">{{ account.name }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  {# ------------------------------------------------------------------ #}
+  {% elif step.slug in ('revenus', 'depenses') %}
+  {% set suggestions = income_suggestions if step.slug == 'revenus' else spending_suggestions %}
+  {% set choix = income_envelopes if step.slug == 'revenus' else spending_envelopes %}
+  {% if suggestions %}
+  <div class="card">
+    <div class="card-head">
+      <h2>{{ suggestions | length }} à reconnaître</h2>
+      <span class="pill warn">{{ suggestions | length }}</span>
+    </div>
+    {% for s in suggestions %}
+    <form class="suggestion" method="post" action="{{ url_for('rule_from_suggestion') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="pattern" value="{{ s.pattern }}">
+      <input type="hidden" name="sign" value="{{ 'credit' if step.slug == 'revenus' else 'debit' }}">
+      <input type="hidden" name="next_url" value="{{ url_for('onboarding_step', slug=step.slug) }}">
+      <div class="who">
+        <strong class="truncate">{{ s.pattern }}</strong>
+        <div class="tiny mute truncate">{{ s.sample_label }}</div>
+        <div class="tiny mute">{{ s.count }} fois · {{ s.total_cents | money_short }} au total</div>
+      </div>
+      <div class="act">
+        <select name="envelope_id" aria-label="Enveloppe pour {{ s.pattern }}" required>
+          {% if not s.envelope_id %}<option value="" selected>Choisir…</option>{% endif %}
+          {% for envelope in choix %}
+          <option value="{{ envelope.id }}" {{ 'selected' if envelope.id == s.envelope_id }}>{{ envelope.name }}</option>
+          {% endfor %}
+        </select>
+        <button class="btn sm primary" type="submit">Classer</button>
+      </div>
+    </form>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="card ok-card">
+    <p class="small"><strong>Tout est reconnu.</strong>
+      {% if step.slug == 'revenus' %}Aucune entrée récurrente ne reste sans enveloppe.
+      {% else %}Aucun commerçant récurrent ne reste sans règle.{% endif %}</p>
+  </div>
+  {% endif %}
+
+  {# ------------------------------------------------------------------ #}
+  {% elif step.slug == 'budget' %}
+  {% if step.done %}
+  <div class="card ok-card">
+    <p class="small"><strong>Budget de référence en place.</strong> Il est recopié dans chaque nouveau mois, puis figé. L'application vous proposera une revue quand vos dépenses s'en écarteront durablement.</p>
+    <div class="form-actions">
+      <a class="btn" href="{{ url_for('budget_page') }}">Voir le budget</a>
+    </div>
+  </div>
+  {% elif proposals %}
+  <div class="card">
+    <div class="card-head">
+      <h2>{{ proposals | length }} enveloppe{{ 's' if proposals | length > 1 }} à calibrer</h2>
+    </div>
+    <p class="small dim">Chaque montant est la médiane de vos dépenses réelles, arrondie à l'euro. Vous validez case par case sur l'écran suivant.</p>
+    <div class="list">
+      {% for p in proposals[:6] %}
+      <div class="list-item">
+        <span class="dot" style="background:{{ p.envelope.color }}"></span>
+        <span class="grow truncate">{{ p.envelope.name }}</span>
+        <span class="num strong">{{ p.proposed_cents | money }}</span>
+      </div>
+      {% endfor %}
+      {% if proposals | length > 6 %}
+      <div class="list-item small dim">et {{ proposals | length - 6 }} autre{{ 's' if proposals | length - 6 > 1 }}…</div>
+      {% endif %}
+    </div>
+    <div class="form-actions">
+      <a class="btn primary" href="{{ url_for('calibration_page') }}">Ouvrir le calibrage</a>
+    </div>
+  </div>
+  {% else %}
+  <div class="card">
+    <p class="small dim">Il faut au moins un mois complet d'opérations classées pour proposer des montants. Revenez après l'import du prochain relevé.</p>
+  </div>
+  {% endif %}
+
+  {# ------------------------------------------------------------------ #}
+  {% elif step.slug == 'suivi' %}
+  {% if step.done %}
+  <div class="card ok-card">
+    <p class="small"><strong>Premier rapprochement fait.</strong> Refaites-le une fois par mois, à réception du relevé : c'est ce qui garantit que les chiffres de l'application sont ceux de la banque.</p>
+  </div>
+  {% else %}
+  <div class="card">
+    <div class="card-head"><h2>Choisissez un compte</h2></div>
+    <p class="small dim">Vous cochez les opérations que vous retrouvez sur le relevé, vous saisissez le solde affiché par la banque, l'application compare. Un écart signale une opération manquante ou saisie deux fois.</p>
+    <div class="list">
+      {% for account in accounts %}
+      {% if account.kind != 'credit' %}
+      <div class="list-item">
+        <span class="grow truncate">{{ account.name }}</span>
+        <a class="btn sm" href="{{ url_for('reconcile_page', account_id=account.id) }}">⇌ Rapprocher</a>
+      </div>
+      {% endif %}
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {# ------------------------------------------------------------------ #}
+  {% elif step.slug == 'pret' %}
+  <div class="card">
+    <div class="card-head"><h2>Où vous en êtes</h2></div>
+    <div class="list">
+      {% for s in steps %}{% if s.slug != 'pret' %}
+      <div class="list-item">
+        <span class="pill {{ 'pos' if s.done else 'warn' }}">{{ '✓' if s.done else '·' }}</span>
+        <a class="grow truncate" href="{{ url_for('onboarding_step', slug=s.slug) }}">{{ s.title }}</a>
+        {% if not s.done and s.pending %}<span class="small dim">{{ s.pending }} à traiter</span>{% endif %}
+      </div>
+      {% endif %}{% endfor %}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>Ce qui tourne tout seul maintenant</h2></div>
+    <ul class="points-list">
+      <li>Chaque import classe les opérations avec vos règles, et écarte les doublons.</li>
+      <li>Le budget de référence est recopié dans chaque nouveau mois, puis figé.</li>
+      <li>Un dépassement est repris sur le mois suivant : l'enveloppe repart à zéro.</li>
+      <li>Une revue vous est proposée quand vos dépenses s'écartent durablement des montants.</li>
+      <li>Les versements vers vos comptes d'épargne déclarés sortent des dépenses tout seuls.</li>
+    </ul>
+    <div class="form-actions">
+      <form method="post" action="{{ url_for('onboarding_dismiss') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="hidden" value="on">
+        <button class="btn" type="submit">Ranger la mise en route</button>
+      </form>
+      <a class="btn primary" href="{{ url_for('dashboard') }}">Aller au tableau de bord</a>
+    </div>
+  </div>
+  {% endif %}
+
+  {# ------------------------------------------------------------------ #}
+  <div class="flow-foot">
+    {% if previous_slug %}
+    <a class="btn" href="{{ url_for('onboarding_step', slug=previous_slug) }}">‹ Retour</a>
+    {% else %}<span></span>{% endif %}
+    {% if next_slug %}
+    <a class="btn primary" href="{{ url_for('onboarding_step', slug=next_slug) }}">
+      {{ 'Suivant ›' if step.done or step.slug == 'pret' else 'Passer ›' }}
+    </a>
+    {% else %}
+    <a class="btn primary" href="{{ url_for('dashboard') }}">Terminer</a>
+    {% endif %}
+  </div>
+  <p class="tiny mute center">Glissez vers la gauche ou la droite pour changer d'étape.</p>
+</div>
+
+{% endblock %}

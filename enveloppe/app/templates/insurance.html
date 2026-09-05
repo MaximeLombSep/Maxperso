@@ -110,7 +110,7 @@
           <td data-label=""><a class="btn ghost sm" href="{{ url_for('contract_detail', contract_id=status.contract.id) }}">Ouvrir</a></td>
         </tr>
         {% else %}
-        <tr><td colspan="8"><div class="empty"><div class="big">◐</div>Aucun contrat enregistré.<br>
+        <tr><td colspan="8" class="wide"><div class="empty"><div class="big">◐</div>Aucun contrat enregistré.<br>
           Ajoutez vos contrats pour ne plus jamais rater une fenêtre de résiliation.</div></td></tr>
         {% endfor %}
       </tbody>

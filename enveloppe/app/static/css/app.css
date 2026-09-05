@@ -800,3 +800,36 @@ table.mini thead th {
   font-size: .68rem; text-transform: uppercase; letter-spacing: .06em;
   color: var(--text-mute); font-weight: 600; text-align: left;
 }
+
+/* ----- Mise en route : un écran par étape -------------------------------- */
+/* Le parcours se lit d'un pouce : une seule décision par écran, la barre de
+   progression toujours visible, et les deux boutons en bas, au pouce. */
+
+.flow { max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+
+.flow-head { display: flex; flex-direction: column; gap: 8px; }
+.flow-dots { display: flex; gap: 6px; }
+.dot-step {
+  height: 4px; flex: 1; border-radius: 99px; background: var(--surface-3);
+  transition: background .2s ease;
+}
+.dot-step.ok { background: var(--pos); }
+.dot-step.on { background: var(--accent); }
+.flow-count {
+  font-size: .72rem; text-transform: uppercase; letter-spacing: .07em;
+  color: var(--text-mute); font-weight: 600;
+}
+
+.flow h1 { margin: 0; }
+.flow-intro { color: var(--text-dim); font-size: .95rem; margin: 0; }
+
+.flow .ok-card { border-color: var(--pos); background: var(--pos-soft); }
+
+.flow-foot {
+  display: flex; justify-content: space-between; gap: 12px;
+  padding-top: 4px;
+}
+.flow-foot .btn { flex: 1 1 0; }
+
+.points-list { margin: 0; padding-left: 1.1rem; display: flex; flex-direction: column; gap: 6px; }
+.points-list li { font-size: .9rem; color: var(--text-dim); }

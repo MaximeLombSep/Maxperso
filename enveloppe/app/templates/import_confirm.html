@@ -54,14 +54,14 @@
     {% endif %}
 
     <div class="table-wrap">
-      <table>
+      <table class="stack">
         <thead><tr><th>Date</th><th>Libellé</th><th class="amount">Montant</th></tr></thead>
         <tbody>
           {% for item in parsed %}
           <tr>
-            <td class="nowrap small">{{ item.op_date | date_fr }}</td>
-            <td class="truncate" style="max-width:520px">{{ item.label }}</td>
-            <td class="amount num {{ 'neg' if item.amount_cents < 0 else 'pos' }}">{{ item.amount_cents | money }}</td>
+            <td class="nowrap small" data-label="Date">{{ item.op_date | date_fr }}</td>
+            <td class="wide" style="max-width:520px">{{ item.label }}</td>
+            <td class="amount num {{ 'neg' if item.amount_cents < 0 else 'pos' }}" data-label="Montant">{{ item.amount_cents | money }}</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -127,14 +127,14 @@
     <div class="card-head"><h2>{{ parsed_count }} opération(s) lue(s)</h2><span class="pill pos">format OFX</span></div>
     <p class="small dim">Le format OFX fournit un identifiant unique par opération : les réimports du même relevé ne créeront aucun doublon.</p>
     <div class="table-wrap">
-      <table>
+      <table class="stack">
         <thead><tr><th>Date</th><th>Libellé</th><th class="amount">Montant</th></tr></thead>
         <tbody>
           {% for item in parsed %}
           <tr>
-            <td class="nowrap small">{{ item.op_date | date_fr }}</td>
-            <td class="truncate">{{ item.label }}</td>
-            <td class="amount num {{ 'neg' if item.amount_cents < 0 else 'pos' }}">{{ item.amount_cents | money }}</td>
+            <td class="nowrap small" data-label="Date">{{ item.op_date | date_fr }}</td>
+            <td class="wide">{{ item.label }}</td>
+            <td class="amount num {{ 'neg' if item.amount_cents < 0 else 'pos' }}" data-label="Montant">{{ item.amount_cents | money }}</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -211,7 +211,7 @@
   <div class="card">
     <div class="card-head"><h2>Aperçu du fichier</h2></div>
     <div class="table-wrap">
-      <table>
+      <table class="mini">
         <thead><tr>{% for header in preview.headers %}<th>{{ header }}</th>{% endfor %}</tr></thead>
         <tbody>
           {% for row in preview.sample %}
