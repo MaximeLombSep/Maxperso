@@ -86,6 +86,7 @@ class ImportResult:
     duplicates: int = 0
     errors: int = 0
     categorized: int = 0
+    savings_paired: int = 0
     messages: list[str] = field(default_factory=list)
     suspects: list[Suspect] = field(default_factory=list)
     inserted_ids: list[int] = field(default_factory=list)
@@ -565,6 +566,12 @@ def ingest(
     batch.errors = result.errors
     db.commit()
 
+    # Un versement vers un livret déjà déclaré n'est ni une dépense ni un
+    # revenu : il est requalifié en virement interne et crédité sur le compte
+    # d'épargne, de sorte que son solde suive les relevés sans ressaisie.
+    from .savings import apply_savings_patterns
+
+    result.savings_paired = apply_savings_patterns(db)
     result.categorized = apply_rules(db, fresh)
     result.inserted_ids = [tx.id for tx in fresh]
     result.batch_id = batch.id

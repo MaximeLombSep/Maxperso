@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
+import uuid
 from dataclasses import dataclass
 from datetime import date
 
@@ -356,21 +359,134 @@ def suggest_savings_accounts(db: Session, months: int = 12) -> list[SavingsHint]
     return hints
 
 
-def declare_savings_account(
-    db: Session, pattern: str, name: str, opening_balance_cents: int = 0
-) -> tuple[Account, int]:
-    """Crée le compte d'épargne et requalifie les versements passés.
+# Motifs déclarés par l'utilisateur, mémorisés pour les imports suivants.
+SAVINGS_PATTERNS_KEY = "savings_account_patterns"
 
-    Les opérations correspondantes deviennent des **virements internes** :
-    elles sortent des dépenses du budget et cessent de fausser les moyennes.
-    Retourne le compte et le nombre d'opérations requalifiées.
+
+def registered_patterns(db: Session) -> dict[str, int]:
+    """Motif de libellé → compte d'épargne de destination."""
+    setting = db.get(Setting, SAVINGS_PATTERNS_KEY)
+    if setting is None or not setting.value:
+        return {}
+    try:
+        stored = json.loads(setting.value)
+    except ValueError:
+        return {}
+    return {str(k): int(v) for k, v in stored.items() if str(v).isdigit()}
+
+
+def register_pattern(db: Session, pattern: str, account_id: int) -> None:
+    patterns = registered_patterns(db)
+    patterns[pattern.upper().strip()] = account_id
+    setting = db.get(Setting, SAVINGS_PATTERNS_KEY)
+    if setting is None:
+        setting = Setting(key=SAVINGS_PATTERNS_KEY)
+        db.add(setting)
+    setting.value = json.dumps(patterns, ensure_ascii=False)
+    # Rendu visible immédiatement : l'appariement qui suit relit ce réglage.
+    db.flush()
+
+
+def _mirror_fingerprint(source: str) -> str:
+    """Empreinte de la contrepartie, dérivée de l'originale.
+
+    Déterministe : rejouer l'appariement sur les mêmes opérations ne crée
+    jamais un second miroir.
+    """
+    return hashlib.sha256(f"miroir|{source}".encode("utf-8")).hexdigest()
+
+
+def apply_savings_patterns(db: Session, commit: bool = True) -> int:
+    """Requalifie les versements vers une épargne déclarée, contrepartie comprise.
+
+    Un virement vers son propre livret n'est ni une dépense ni un revenu :
+    l'opération sortante devient un virement interne, et une opération
+    entrante de même montant est créée sur le compte d'épargne. Le solde du
+    livret suit donc les relevés, sans ressaisie.
+    """
+    patterns = registered_patterns(db)
+    if not patterns:
+        return 0
+
+    accounts = {
+        account.id: account
+        for account in db.scalars(select(Account).where(Account.kind == "savings"))
+    }
+    if not accounts:
+        return 0
+
+    known_mirrors = {
+        (account_id, fingerprint)
+        for account_id, fingerprint in db.execute(
+            select(Transaction.account_id, Transaction.fingerprint).where(
+                Transaction.account_id.in_(list(accounts))
+            )
+        ).all()
+    }
+
+    paired = 0
+    for transaction in db.scalars(
+        select(Transaction).where(
+            Transaction.amount_cents < 0,
+            Transaction.account_id.not_in(list(accounts)),
+        )
+    ):
+        label = normalize_label(transaction.raw_label or transaction.label)
+        for pattern, account_id in patterns.items():
+            savings = accounts.get(account_id)
+            if savings is None or not _matches_savings(label, pattern):
+                continue
+
+            digest = _mirror_fingerprint(transaction.fingerprint)
+            if (savings.id, digest) in known_mirrors:
+                break  # contrepartie déjà créée lors d'un import précédent
+
+            group = transaction.transfer_group or str(uuid.uuid4())
+            transaction.kind = "transfer"
+            transaction.envelope_id = None
+            transaction.transfer_group = group
+            db.add(
+                Transaction(
+                    account_id=savings.id,
+                    op_date=transaction.op_date,
+                    amount_cents=-transaction.amount_cents,
+                    label=transaction.label,
+                    raw_label=transaction.raw_label,
+                    normalized_label=transaction.normalized_label,
+                    kind="transfer",
+                    transfer_group=group,
+                    fingerprint=digest,
+                )
+            )
+            known_mirrors.add((savings.id, digest))
+            paired += 1
+            break
+
+    if paired:
+        # Les contreparties doivent exister en base avant tout calcul de
+        # solde, y compris quand l'appelant garde la main sur la transaction.
+        db.flush()
+        if commit:
+            db.commit()
+    return paired
+
+
+def declare_savings_account(
+    db: Session, pattern: str, name: str, current_balance_cents: int = 0
+) -> tuple[Account, int]:
+    """Crée le compte d'épargne, rattrape le passé et mémorise le motif.
+
+    `current_balance_cents` est le solde **d'aujourd'hui**, celui que l'on
+    lit dans son application bancaire. Le solde d'ouverture s'en déduit en
+    retirant les versements repris : le compte affiche donc le bon montant
+    tout de suite, et continue de suivre les imports suivants tout seul.
     """
     pattern = pattern.upper().strip()
     position = int(db.scalar(select(func.max(Account.position))) or 0) + 1
     account = Account(
         name=name.strip()[:120] or "Épargne",
         kind="savings",
-        opening_balance_cents=opening_balance_cents,
+        opening_balance_cents=0,
         # Un compte d'épargne ne participe pas au « reste à budgéter » :
         # l'argent qui s'y trouve est déjà arbitré.
         is_budgeted=False,
@@ -379,18 +495,18 @@ def declare_savings_account(
     db.add(account)
     db.flush()
 
-    requalified = 0
-    for transaction in db.scalars(
-        select(Transaction).where(
-            Transaction.amount_cents < 0, Transaction.kind != "transfer"
+    register_pattern(db, pattern, account.id)
+    paired = apply_savings_patterns(db, commit=False)
+
+    versements = int(
+        db.scalar(
+            select(func.sum(Transaction.amount_cents)).where(
+                Transaction.account_id == account.id
+            )
         )
-    ):
-        label = normalize_label(transaction.raw_label or transaction.label)
-        if not _matches_savings(label, pattern):
-            continue
-        transaction.kind = "transfer"
-        transaction.envelope_id = None
-        requalified += 1
+        or 0
+    )
+    account.opening_balance_cents = current_balance_cents - versements
 
     db.commit()
-    return account, requalified
+    return account, paired

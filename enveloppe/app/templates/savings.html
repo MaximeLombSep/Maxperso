@@ -74,7 +74,7 @@
     </div>
   </form>
   {% endfor %}
-  <p class="tiny mute">Le solde est facultatif, mais sans lui l'épargne de sécurité partira de zéro : recopiez-le depuis votre application bancaire. C'est une photo à aujourd'hui — les versements suivants sortiront bien du compte courant, mais le solde du livret ne se mettra à jour que si vous importez aussi son relevé, ou si vous le corrigez depuis <a href="{{ url_for('accounts_page') }}">Comptes</a>.</p>
+  <p class="tiny mute">Indiquez le solde <strong>d'aujourd'hui</strong>, tel que votre banque l'affiche. Les versements passés sont repris pour retrouver ce montant exactement, et le motif est mémorisé : les versements des prochains relevés créditeront le compte tout seuls, sans ressaisie.</p>
 </div>
 {% elif not savings_accounts %}
 <div class="card" style="margin-bottom:16px">
