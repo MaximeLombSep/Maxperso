@@ -14,8 +14,9 @@ from jinja2 import pass_context
 from starlette.datastructures import URL
 from starlette.responses import Response
 
+from . import __version__
 from .config import settings
-from .security import CSRF_COOKIE
+from .security import CSRF_COOKIE, login_required
 from .services.budget import current_period, period_label
 from .services.money import format_cents, format_cents_short
 
@@ -28,16 +29,19 @@ FLASH_COOKIE = "enveloppe_flash"
 def path_for(request: Request, name: str, **path_params) -> URL:
     """URL racine-relative d'une route : « /budget », jamais « http://hôte/budget ».
 
-    Derrière l'ingress Home Assistant, l'application est jointe sur son adresse
-    interne (`172.30.x.x:8099`) alors que le navigateur, lui, est sur le domaine
-    de Home Assistant. Une URL absolue construite depuis la requête reçue
-    porterait donc un hôte que le navigateur ne peut pas atteindre — feuille de
-    style non chargée, redirections vers le vide. Une URL relative est résolue
-    par le navigateur contre l'origine qu'il connaît, ce qui reste juste en
-    accès direct comme derrière n'importe quel proxy.
+    Deux corrections en une :
+
+    - **l'hôte** — derrière l'ingress, l'application est jointe sur son adresse
+      interne (`172.30.x.x:8099`) alors que le navigateur est sur le domaine de
+      Home Assistant. Une URL absolue porterait un hôte injoignable ;
+    - **le préfixe** — Home Assistant ôte `/api/hassio_ingress/<jeton>` du
+      chemin avant de nous transmettre la requête, mais le navigateur, lui, en
+      a besoin. Il est relu dans l'en-tête et rajouté ici, sans jamais toucher
+      au routage interne.
     """
     absolute = request.url_for(name, **path_params)
-    relative = absolute.path
+    prefix = request.headers.get("X-Ingress-Path", "").rstrip("/")
+    relative = f"{prefix}{absolute.path}"
     if absolute.query:
         relative = f"{relative}?{absolute.query}"
     return URL(relative)
@@ -100,6 +104,8 @@ def _read_flash(request: Request) -> dict | None:
 def render(request: Request, template: str, **context) -> Response:
     """Rendu d'une page avec le contexte partagé par toutes les vues."""
     base = {
+        "version": __version__,
+        "login_required": login_required(request),
         # Posé par SecurityMiddleware, y compris lors de la toute première
         # requête d'un navigateur qui n'a pas encore le cookie.
         "csrf_token": getattr(request.state, "csrf_token", "")

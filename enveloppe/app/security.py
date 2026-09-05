@@ -47,6 +47,8 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(password: str, stored: str) -> bool:
+    if not stored:
+        return False  # aucun mot de passe défini : la connexion est fermée
     try:
         scheme, n, r, p, salt_hex, key_hex = stored.split("$")
         if scheme != "scrypt":
@@ -92,10 +94,49 @@ def new_csrf_token() -> str:
     return secrets.token_urlsafe(32)
 
 
+def through_ingress(request: Request) -> bool:
+    """La requête arrive-t-elle par l'ingress Home Assistant ?
+
+    L'en-tête n'est posé que par le proxy du Superviseur, et l'add-on ne
+    publie aucun port : le seul chemin qui l'apporte est donc passé par
+    l'authentification de Home Assistant. En accès direct — port publié ou
+    docker compose — l'en-tête est absent et le mot de passe reprend son rôle.
+    """
+    return bool(request.headers.get("X-Ingress-Path"))
+
+
+def login_required(request: Request) -> bool:
+    return settings.require_login or not through_ingress(request)
+
+
+def ensure_installed(db: Session) -> User:
+    """Compte technique et plan d'enveloppes, créés au premier accès.
+
+    Le condensat vide signifie « aucun mot de passe défini » : la connexion
+    par formulaire est alors impossible, seul l'ingress ouvre l'application.
+    Un mot de passe se pose ensuite depuis les Réglages.
+    """
+    user = db.scalar(select(User))
+    if user is not None:
+        return user
+
+    user = User(username="home-assistant", password_hash="")
+    db.add(user)
+    db.commit()
+
+    from .services.seed import bootstrap
+
+    bootstrap(db)
+    return user
+
+
 def current_user(
     request: Request, db: Session = Depends(get_session)
 ) -> User:
     """Dépendance : exige une session valide, sinon 401."""
+    if not login_required(request):
+        return ensure_installed(db)
+
     token = request.cookies.get(SESSION_COOKIE)
     payload = read_session(token) if token else None
     if not payload:

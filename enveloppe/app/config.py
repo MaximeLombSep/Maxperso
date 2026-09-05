@@ -38,6 +38,7 @@ class Settings:
     session_max_age: int
     max_upload_mb: int
     behind_proxy: bool
+    require_login: bool
 
     @property
     def db_path(self) -> Path:
@@ -87,6 +88,10 @@ def load_settings() -> Settings:
         session_max_age=_env_int("BUDGET_SESSION_MAX_AGE", 60 * 60 * 24 * 14),
         max_upload_mb=_env_int("BUDGET_MAX_UPLOAD_MB", 25),
         behind_proxy=_env_bool("BUDGET_BEHIND_PROXY", True),
+        # Derrière l'ingress Home Assistant, l'utilisateur est déjà
+        # authentifié par HA : un second mot de passe n'ajoute rien. En accès
+        # direct, en revanche, il reste la seule protection.
+        require_login=_env_bool("BUDGET_REQUIRE_LOGIN", False),
     )
 
 

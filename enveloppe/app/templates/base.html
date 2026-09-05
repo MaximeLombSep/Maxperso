@@ -42,10 +42,13 @@
 
       <div class="nav-label">Session</div>
       <button type="button" class="btn ghost sm" data-theme-toggle style="justify-content:flex-start">◑ Thème clair / sombre</button>
+      {% if login_required %}
       <form method="post" action="{{ url_for('logout') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <button type="submit" class="btn ghost sm block" style="justify-content:flex-start">⏻ Se déconnecter</button>
       </form>
+      {% endif %}
+      <div class="tiny mute" style="padding:10px">Enveloppe {{ version }}</div>
     </nav>
   </aside>
 
@@ -81,10 +84,13 @@
     </div>
     <div class="sheet-actions">
       <button type="button" class="btn ghost" data-theme-toggle>◑ Thème clair / sombre</button>
+      {% if login_required %}
       <form method="post" action="{{ url_for('logout') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <button type="submit" class="btn ghost block">⏻ Se déconnecter</button>
       </form>
+      {% endif %}
+      <div class="tiny mute center">Enveloppe {{ version }}</div>
     </div>
   </div>
 </div>

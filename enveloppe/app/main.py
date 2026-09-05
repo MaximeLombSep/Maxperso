@@ -56,21 +56,20 @@ CSP = (
 
 
 class IngressMiddleware(BaseHTTPMiddleware):
-    """Reconstruit les URLs derrière l'ingress Home Assistant.
+    """Marqueur de passage par l'ingress Home Assistant.
 
-    HA proxifie l'add-on sous `/api/hassio_ingress/<jeton>/` et transmet ce
-    préfixe dans `X-Ingress-Path`. Sans cela, tous les liens générés
-    pointeraient à la racine de l'hôte.
+    HA proxifie l'add-on sous `/api/hassio_ingress/<jeton>/`, ôte ce préfixe
+    du chemin et le transmet dans `X-Ingress-Path`. Le préfixe est relu au
+    moment de fabriquer les liens (voir `templating.path_for`).
     """
 
     async def dispatch(self, request: Request, call_next):
-        ingress_path = request.headers.get("X-Ingress-Path")
-        if ingress_path:
-            prefix = "/" + ingress_path.strip("/")
-            request.scope["root_path"] = prefix
-            # Starlette construit `request.base_url` à partir de
-            # `app_root_path` en priorité : les deux doivent être posés.
-            request.scope["app_root_path"] = prefix
+        # Le préfixe sert uniquement à fabriquer les liens : il n'est pas
+        # posé dans `root_path`. Starlette retranche en effet `root_path` du
+        # chemin pour router les points de montage — or Home Assistant a déjà
+        # ôté le préfixe avant de nous transmettre la requête. Le poser
+        # faisait chercher les fichiers statiques sous un chemin inexistant,
+        # et la feuille de style revenait en 404.
         return await call_next(request)
 
 

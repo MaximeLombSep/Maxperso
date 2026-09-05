@@ -9,6 +9,8 @@ from sqlalchemy.orm import Session
 from ..db import get_session
 from ..security import (
     SESSION_COOKIE,
+    ensure_installed,
+    login_required,
     create_user,
     has_user,
     issue_session,
@@ -34,6 +36,10 @@ def _safe_next(raw: str | None) -> str:
 
 @router.get("/installation", name="setup_form")
 def setup_form(request: Request, db: Session = Depends(get_session)):
+    if not login_required(request):
+        # Home Assistant a déjà authentifié : rien à installer côté mot de passe.
+        ensure_installed(db)
+        return RedirectResponse(path_for(request, "dashboard"), status_code=303)
     if has_user(db):
         return RedirectResponse(path_for(request, "login_form"), status_code=303)
     return render(request, "setup.html", active="setup", problems=[])
@@ -69,6 +75,9 @@ def setup_submit(
 
 @router.get("/connexion", name="login_form")
 def login_form(request: Request, db: Session = Depends(get_session)):
+    if not login_required(request):
+        ensure_installed(db)
+        return RedirectResponse(path_for(request, "dashboard"), status_code=303)
     if not has_user(db):
         return RedirectResponse(path_for(request, "setup_form"), status_code=303)
     return render(

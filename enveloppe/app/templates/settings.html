@@ -28,9 +28,16 @@
   <form class="card" method="post" action="{{ url_for('change_password') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <div class="card-head"><h2>Mot de passe</h2></div>
+    {% if user and not user.password_hash %}
+    <p class="small dim">Aucun mot de passe n'est défini : l'accès passe uniquement par
+      Home Assistant, qui vous authentifie déjà. En poser un ici permet d'ouvrir aussi
+      l'application en accès direct, hors de Home Assistant.</p>
+    {% endif %}
     <div class="grid" style="gap:12px">
+      {% if not user or user.password_hash %}
       <div class="field"><label for="p-current">Mot de passe actuel</label>
         <input id="p-current" name="current" type="password" autocomplete="current-password" required></div>
+      {% endif %}
       <div class="field"><label for="p-new">Nouveau mot de passe (12 caractères minimum)</label>
         <input id="p-new" name="new_password" type="password" autocomplete="new-password" minlength="12" required></div>
       <div class="field"><label for="p-confirm">Confirmation</label>
@@ -43,7 +50,10 @@
   <div class="card">
     <div class="card-head"><h2>Vos données</h2></div>
     <div class="list">
+      <div class="list-item"><div class="grow small">Version</div><span class="strong">Enveloppe {{ version }}</span></div>
       <div class="list-item"><div class="grow small">Utilisateur</div><span class="strong">{{ user.username if user }}</span></div>
+      <div class="list-item"><div class="grow small">Accès</div>
+        <span class="small">{{ "mot de passe requis" if login_required else "authentification Home Assistant" }}</span></div>
       <div class="list-item"><div class="grow small">Dernière connexion</div><span class="small">{{ user.last_login | date_fr('%d/%m/%Y %H:%M') if user and user.last_login else '—' }}</span></div>
       <div class="list-item"><div class="grow small">Opérations enregistrées</div><span class="num strong">{{ counts.transactions }}</span></div>
       <div class="list-item"><div class="grow small">Comptes</div><span class="num strong">{{ counts.accounts }}</span></div>

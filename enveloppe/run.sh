@@ -16,6 +16,14 @@ else
   export BUDGET_ALLOW_INSECURE_COOKIES=0
 fi
 
+# Derrière l'ingress, Home Assistant authentifie déjà l'utilisateur : le mot
+# de passe applicatif n'est exigé que si l'option le demande explicitement.
+if bashio::config.true 'require_login'; then
+  export BUDGET_REQUIRE_LOGIN=1
+else
+  export BUDGET_REQUIRE_LOGIN=0
+fi
+
 bashio::log.info "Démarrage d'Enveloppe sur le port 8099 (ingress)."
 
 exec python3 -m uvicorn app.main:app \

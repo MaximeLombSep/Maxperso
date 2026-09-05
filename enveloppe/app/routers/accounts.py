@@ -183,7 +183,7 @@ def settings_page(request: Request, db: Session = Depends(get_session)):
 @router.post("/reglages/mot-de-passe", name="change_password", dependencies=[Depends(csrf_guard)])
 def change_password(
     request: Request,
-    current: str = Form(...),
+    current: str = Form(""),
     new_password: str = Form(...),
     confirm: str = Form(...),
     user: User = Depends(current_user),
@@ -191,7 +191,9 @@ def change_password(
 ):
     response = RedirectResponse(path_for(request, "settings_page"), status_code=303)
 
-    if not verify_password(current, user.password_hash):
+    # Un compte créé automatiquement par l'ingress n'a pas de mot de passe :
+    # on n'en exige donc pas un pour en poser le premier.
+    if user.password_hash and not verify_password(current, user.password_hash):
         flash(response, "Mot de passe actuel incorrect.", "error")
         return response
     if new_password != confirm:
