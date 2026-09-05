@@ -265,6 +265,8 @@ SAVINGS_LABEL_PATTERNS: list[tuple[str, str]] = [
     ("PEL", "PEL"),
     ("CEL", "CEL"),
     ("EPARGNE", "Compte d'épargne"),
+    ("CPT DEPOT", "Compte de dépôt"),
+    ("COMPTE DE DEPOT", "Compte de dépôt"),
 ]
 
 SAVINGS_HINT_MIN_COUNT = 2

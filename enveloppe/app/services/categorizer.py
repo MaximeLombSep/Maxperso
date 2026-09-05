@@ -60,11 +60,51 @@ def normalize_label(label: str) -> str:
     return _SPACES.sub(" ", text).strip()
 
 
+# Tout ce qui suit ces marqueurs est de la référence bancaire : identifiant
+# de mandat, numéro de créancier, référence du donneur d'ordre. Rien qui
+# identifie le commerçant, et beaucoup de bruit pour les regroupements.
+_CUT_RE = re.compile(
+    r"\bREF\W*(?:DONNEUR|DU\s+MANDAT|MANDAT)"
+    r"|\bREFERENCE\b|\bCTTO\b|\bEFECTO\b|\bID\s+CREANCIER\b|\bRUM\b"
+)
+
+# Marqueurs propres aux relevés de carte, en plus du bruit commun. « FACT
+# jjmmaa » date l'achat sur un relevé de carte différée : utile au moment de
+# lire le PDF, sans intérêt pour reconnaître le commerçant.
+_MERCHANT_NOISE = re.compile(r"\bFACT\s*\d{2,8}\b|\bFACT\b|\bCB\b")
+
+
+def merchant_label(label: str) -> str:
+    """Libellé réduit au commerçant, pour proposer des règles.
+
+    Volontairement distinct de `normalize_label`, qui alimente l'empreinte
+    anti-doublon : changer la forme canonique d'un libellé déjà en base
+    ferait réapparaître toutes les opérations au prochain import. Ce
+    nettoyage-ci n'a donc aucun effet sur les empreintes existantes, et les
+    règles produites restent compatibles puisqu'elles sont recherchées en
+    « contient » dans le libellé normalisé.
+    """
+    if not label:
+        return ""
+    text = unicodedata.normalize("NFKD", label)
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    text = text.upper()
+
+    cut = _CUT_RE.search(text)
+    if cut:
+        text = text[: cut.start()]
+
+    text = _MERCHANT_NOISE.sub(" ", text)
+    text = _NOISE_RE.sub(" ", text)
+    text = _NON_WORD.sub(" ", text)
+    return _SPACES.sub(" ", text).strip()
+
+
 def merchant_tokens(label: str, limit: int = 3) -> list[str]:
     """Mots significatifs d'un libellé, dans l'ordre d'apparition."""
     tokens = [
         tok
-        for tok in normalize_label(label).split()
+        for tok in merchant_label(label).split()
         if len(tok) > 2 and tok not in _STOPWORDS and not tok.isdigit()
     ]
     return tokens[:limit]
@@ -287,11 +327,111 @@ class RuleSuggestion:
         return self.total_cents // max(self.count, 1)
 
 
+# Les motifs livrés (`SEED_RULES`) reconnaissent des enseignes nationales.
+# Un relevé réel est surtout fait de commerçants locaux — mais leur nom
+# porte presque toujours le métier. Ces mots-clés sont cherchés comme mots
+# entiers n'importe où dans le libellé, ce qui rattrape « BOWLING DE VIRE »
+# ou « BOULANGERIE MARTIN » qu'aucune liste d'enseignes ne contiendra jamais.
+CATEGORY_KEYWORDS: list[tuple[str, str]] = [
+    ("BOULANGERIE", "Courses"),
+    ("BOULANGER", "Courses"),
+    ("PATISSERIE", "Courses"),
+    ("BOUCHERIE", "Courses"),
+    ("CHARCUTERIE", "Courses"),
+    ("POISSONNERIE", "Courses"),
+    ("PRIMEUR", "Courses"),
+    ("EPICERIE", "Courses"),
+    ("FROMAGERIE", "Courses"),
+    ("MARCHE", "Courses"),
+    ("SUPERMARCHE", "Courses"),
+    ("RESTAURANT", "Restaurants"),
+    ("BRASSERIE", "Restaurants"),
+    ("PIZZERIA", "Restaurants"),
+    ("PIZZA", "Restaurants"),
+    ("CREPERIE", "Restaurants"),
+    ("BISTROT", "Restaurants"),
+    ("TRAITEUR", "Restaurants"),
+    ("SNACK", "Restaurants"),
+    ("KEBAB", "Restaurants"),
+    ("SUSHI", "Restaurants"),
+    ("BURGER", "Restaurants"),
+    ("CAFE", "Restaurants"),
+    ("BAR", "Restaurants"),
+    ("BOWLING", "Loisirs"),
+    ("CINEMA", "Loisirs"),
+    ("PISCINE", "Loisirs"),
+    ("PARC", "Loisirs"),
+    ("MUSEE", "Loisirs"),
+    ("THEATRE", "Loisirs"),
+    ("CONCERT", "Loisirs"),
+    ("SALLE DE SPORT", "Loisirs"),
+    ("FITNESS", "Loisirs"),
+    ("GOLF", "Loisirs"),
+    ("KARTING", "Loisirs"),
+    ("LASER", "Loisirs"),
+    ("PHARMACIE", "Santé"),
+    ("PHARMA", "Santé"),
+    ("MEDECIN", "Santé"),
+    ("DOCTEUR", "Santé"),
+    ("DENTISTE", "Santé"),
+    ("DENTAIRE", "Santé"),
+    ("KINE", "Santé"),
+    ("OPHTALMO", "Santé"),
+    ("OPTIQUE", "Santé"),
+    ("OPTICIEN", "Santé"),
+    ("LABORATOIRE", "Santé"),
+    ("RADIOLOGIE", "Santé"),
+    ("INFIRMIER", "Santé"),
+    ("VETERINAIRE", "Santé"),
+    ("GARAGE", "Entretien véhicule"),
+    ("CARROSSERIE", "Entretien véhicule"),
+    ("PNEU", "Entretien véhicule"),
+    ("CONTROLE TECHNIQUE", "Entretien véhicule"),
+    ("AUTO ECOLE", "Transports"),
+    ("PEAGE", "Transports"),
+    ("PARKING", "Transports"),
+    ("TAXI", "Transports"),
+    ("GARE", "Transports"),
+    ("STATION SERVICE", "Carburant"),
+    ("CARBURANT", "Carburant"),
+    ("COIFFURE", "Achats divers"),
+    ("COIFFEUR", "Achats divers"),
+    ("INSTITUT", "Achats divers"),
+    ("TABAC", "Achats divers"),
+    ("PRESSE", "Achats divers"),
+    ("LIBRAIRIE", "Achats divers"),
+    ("FLEURISTE", "Achats divers"),
+    ("JARDINERIE", "Achats divers"),
+    ("BRICOLAGE", "Achats divers"),
+    ("QUINCAILLERIE", "Achats divers"),
+    ("MEUBLE", "Achats divers"),
+    ("PRESSING", "Achats divers"),
+    ("LAVERIE", "Achats divers"),
+    ("CREDIT", "Loyer / Crédit"),
+    ("PRET", "Loyer / Crédit"),
+    ("SYNDIC", "Charges / Copropriété"),
+    ("COPROPRIETE", "Charges / Copropriété"),
+    ("CANTINE", "Achats divers"),
+    ("PERISCOLAIRE", "Achats divers"),
+    ("CRECHE", "Achats divers"),
+]
+
+
+def _envelope_named(db: Session, name: str) -> Envelope | None:
+    return db.scalar(select(Envelope).where(Envelope.name == name))
+
+
 def _seed_guess(db: Session, normalized: str) -> Envelope | None:
-    """Enveloppe plausible d'après les motifs livrés avec l'application."""
+    """Enveloppe plausible : enseigne connue d'abord, métier ensuite."""
     for pattern, envelope_name in SEED_RULES:
         if pattern.strip() and pattern.strip() in normalized:
-            envelope = db.scalar(select(Envelope).where(Envelope.name == envelope_name))
+            envelope = _envelope_named(db, envelope_name)
+            if envelope is not None:
+                return envelope
+
+    for keyword, envelope_name in CATEGORY_KEYWORDS:
+        if re.search(rf"\b{re.escape(keyword)}\b", normalized):
+            envelope = _envelope_named(db, envelope_name)
             if envelope is not None:
                 return envelope
     return None
@@ -336,7 +476,13 @@ def suggest_rules(
         if len(pattern) < 3:
             continue
         bucket = groups.setdefault(
-            pattern, {"count": 0, "total": 0, "sample": label or source}
+            pattern,
+            {
+                "count": 0,
+                "total": 0,
+                "sample": label or source,
+                "merchant": merchant_label(source),
+            },
         )
         bucket["count"] += 1
         bucket["total"] += -amount
@@ -345,7 +491,7 @@ def suggest_rules(
     for pattern, bucket in groups.items():
         if bucket["count"] < min_count:
             continue
-        guess = _seed_guess(db, pattern) or _learned_guess(db, pattern)
+        guess = _seed_guess(db, bucket["merchant"]) or _learned_guess(db, pattern)
         suggestions.append(
             RuleSuggestion(
                 pattern=pattern,
