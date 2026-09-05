@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% set is_review = (mode == 'revue') %}
+{% block title %}{{ "Revue du budget" if is_review else "Calibrage" }} — Enveloppe{% endblock %}
+{% block content %}
+
+{% set libelles = {
+  'calibrage': 'Calibrage',
+  'hausse': 'À la hausse',
+  'baisse': 'À la baisse',
+  'dormante': 'Sans usage',
+  'nouvelle': 'Non dotée'
+} %}
+
+<div class="topbar">
+  <div>
+    <h1>{{ "Revue du budget" if is_review else "Calibrer sur mon historique" }}</h1>
+    <div class="page-sub">
+      {% if is_review %}
+        Vos dépenses se sont écartées durablement des montants de référence. Rien n'est modifié tant que vous n'avez pas validé.
+      {% else %}
+        Les montants ci-dessous sont déduits de ce que vous avez réellement dépensé, mois par mois. Ils deviendront votre budget de référence.
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{% if not proposals %}
+<div class="card">
+  <div class="card-head"><h2>Rien à proposer</h2></div>
+  {% if is_review %}
+  <p class="small dim">Vos dotations de référence collent à vos dépenses réelles. Il faut au moins trois mois complets d'historique pour qu'une revue ait du sens.</p>
+  {% else %}
+  <p class="small dim">
+    {% if reference_total %}
+      Vos dotations de référence correspondent déjà à votre historique — il n'y a rien à corriger.
+    {% else %}
+      Importez d'abord un relevé et classez quelques opérations : le calibrage a besoin d'au moins un mois complet pour proposer quelque chose.
+    {% endif %}
+  </p>
+  {% endif %}
+  <div class="form-actions">
+    <a class="btn" href="{{ url_for('budget_page') }}">Retour au budget</a>
+  </div>
+</div>
+
+{% else %}
+
+<form method="post" action="{{ url_for('review_apply') if is_review else url_for('calibration_apply') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+  <div class="card">
+    <div class="card-head">
+      <h2>{{ proposals | length }} enveloppe{{ 's' if proposals | length > 1 }}</h2>
+      <span class="pill">
+        {% if periods %}{{ periods | length }} mois observés{% endif %}
+      </span>
+    </div>
+    <p class="small dim">
+      Le montant proposé est la <strong>médiane</strong> des dépenses observées, arrondie à l'euro : une facture exceptionnelle ne gonfle donc pas l'enveloppe. Le mois en cours est exclu du calcul, il est incomplet.
+    </p>
+
+    <ul class="plain-list">
+      {% for p in proposals %}
+      <li class="proposal">
+        <label class="proposal-head">
+          <input type="checkbox" name="envelope_id" value="{{ p.envelope.id }}" checked>
+          <span class="proposal-name">
+            <span class="dot" style="background:{{ p.envelope.color }}"></span>
+            {{ p.envelope.name }}
+          </span>
+          <span class="pill {{ 'warn' if p.reason in ('hausse', 'nouvelle') else '' }}">{{ libelles.get(p.reason, p.reason) }}</span>
+        </label>
+
+        <div class="proposal-amounts">
+          {% if p.current_cents %}
+          <span class="num dim">{{ p.current_cents | money }}</span>
+          <span class="arrow">→</span>
+          {% endif %}
+          <span class="num strong">{{ p.proposed_cents | money }}</span>
+          {% if p.current_cents %}
+          <span class="num {{ 'neg' if p.delta_cents > 0 else 'pos' }}">
+            {{ '+' if p.delta_cents > 0 else '' }}{{ p.delta_cents | money }}
+          </span>
+          {% else %}
+          <span class="small dim">par mois</span>
+          {% endif %}
+        </div>
+
+        <div class="small dim">{{ p.detail }}</div>
+
+        <div class="months">
+          {% for label, value in p.recent(6) %}
+          <span class="month-chip">
+            <span class="m">{{ label.split(' ')[0][:4] }}</span>
+            <span class="v num">{{ value | money_short }}</span>
+          </span>
+          {% endfor %}
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+
+    <div class="form-actions">
+      {% if is_review %}
+      <button class="btn ghost" type="submit" name="action" value="dismiss">Plus tard</button>
+      {% else %}
+      <a class="btn ghost" href="{{ url_for('budget_page') }}">Annuler</a>
+      {% endif %}
+      <button class="btn primary" type="submit" name="action" value="apply">
+        {{ "Mettre à jour les montants" if is_review else "Adopter ces montants" }}
+      </button>
+    </div>
+  </div>
+</form>
+
+<div class="card">
+  <div class="card-head"><h2>Ce qui se passe ensuite</h2></div>
+  <p class="small dim">
+    Une fois adoptés, ces montants sont <strong>figés</strong> : ils sont recopiés tels quels dans chaque nouveau mois et ne se recalculent pas tout seuls. Un budget qui suit les dépenses ne cadre plus rien. L'application vous proposera une revue quand l'écart s'installera — vous resterez libre de la refuser.
+  </p>
+  <form method="post" action="{{ url_for('toggle_auto_apply') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    {% if auto_apply %}
+    <p class="small">Dotation automatique du nouveau mois : <strong>activée</strong>.</p>
+    <button class="btn" type="submit">Désactiver</button>
+    {% else %}
+    <p class="small">Dotation automatique du nouveau mois : <strong>désactivée</strong>.</p>
+    <input type="hidden" name="enabled" value="on">
+    <button class="btn" type="submit">Activer</button>
+    {% endif %}
+  </form>
+</div>
+
+{% endif %}
+
+{% endblock %}

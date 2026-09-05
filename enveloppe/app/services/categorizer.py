@@ -263,3 +263,138 @@ SEED_RULES: list[tuple[str, str]] = [
     ("POLE EMPLOI", "Prestations"),
     ("FRANCE TRAVAIL", "Prestations"),
 ]
+
+
+# --------------------------------------------------------------------------
+# Détection des enveloppes manquantes à partir des opérations importées
+# --------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class RuleSuggestion:
+    """Un commerçant récurrent qu'aucune règle ne reconnaît encore."""
+
+    pattern: str
+    sample_label: str
+    count: int
+    total_cents: int
+    envelope_id: int | None
+    envelope_name: str
+
+    @property
+    def monthly_hint(self) -> int:
+        """Ordre de grandeur mensuel, pour situer l'enjeu."""
+        return self.total_cents // max(self.count, 1)
+
+
+def _seed_guess(db: Session, normalized: str) -> Envelope | None:
+    """Enveloppe plausible d'après les motifs livrés avec l'application."""
+    for pattern, envelope_name in SEED_RULES:
+        if pattern.strip() and pattern.strip() in normalized:
+            envelope = db.scalar(select(Envelope).where(Envelope.name == envelope_name))
+            if envelope is not None:
+                return envelope
+    return None
+
+
+def _learned_guess(db: Session, pattern: str) -> Envelope | None:
+    """Enveloppe déjà retenue pour un libellé équivalent, classé à la main."""
+    rows = db.execute(
+        select(Transaction.raw_label, Transaction.label, Transaction.envelope_id)
+        .where(Transaction.envelope_id.is_not(None), Transaction.kind != "transfer")
+        .limit(2000)
+    ).all()
+    for raw, label, envelope_id in rows:
+        if suggest_pattern(raw or label) == pattern:
+            return db.get(Envelope, envelope_id)
+    return None
+
+
+def suggest_rules(
+    db: Session, limit: int = 15, min_count: int = 2
+) -> list[RuleSuggestion]:
+    """Regroupe les dépenses non classées par commerçant et propose une enveloppe.
+
+    C'est le pendant automatique du classement : après un import, plutôt que
+    de laisser cinquante lignes orphelines, l'application montre les quelques
+    commerçants qui les expliquent et propose une règle pour chacun.
+    """
+    rows = db.execute(
+        select(Transaction.id, Transaction.raw_label, Transaction.label, Transaction.amount_cents)
+        .where(
+            Transaction.envelope_id.is_(None),
+            Transaction.kind != "transfer",
+            Transaction.amount_cents < 0,
+        )
+        .order_by(Transaction.op_date.desc())
+    ).all()
+
+    groups: dict[str, dict] = {}
+    for _tx_id, raw, label, amount in rows:
+        source = raw or label
+        pattern = suggest_pattern(source)
+        if len(pattern) < 3:
+            continue
+        bucket = groups.setdefault(
+            pattern, {"count": 0, "total": 0, "sample": label or source}
+        )
+        bucket["count"] += 1
+        bucket["total"] += -amount
+
+    suggestions: list[RuleSuggestion] = []
+    for pattern, bucket in groups.items():
+        if bucket["count"] < min_count:
+            continue
+        guess = _seed_guess(db, pattern) or _learned_guess(db, pattern)
+        suggestions.append(
+            RuleSuggestion(
+                pattern=pattern,
+                sample_label=bucket["sample"],
+                count=bucket["count"],
+                total_cents=bucket["total"],
+                envelope_id=guess.id if guess else None,
+                envelope_name=guess.name if guess else "",
+            )
+        )
+
+    suggestions.sort(key=lambda s: (s.total_cents, s.count), reverse=True)
+    return suggestions[:limit]
+
+
+def create_rule(
+    db: Session, pattern: str, envelope_id: int, sign: str = "debit"
+) -> Rule:
+    """Règle issue d'une suggestion acceptée."""
+    pattern = pattern.upper().strip()[:200]
+    existing = db.scalar(
+        select(Rule).where(Rule.pattern == pattern, Rule.matcher == "contains")
+    )
+    if existing is not None:
+        existing.envelope_id = envelope_id
+        existing.enabled = True
+        db.commit()
+        return existing
+
+    rule = Rule(
+        envelope_id=envelope_id,
+        matcher="contains",
+        pattern=pattern,
+        sign=sign if sign in {"any", "debit", "credit"} else "debit",
+        priority=150,
+        auto_learned=True,
+    )
+    db.add(rule)
+    db.commit()
+    return rule
+
+
+def recategorize_all(db: Session) -> int:
+    """Repasse toutes les opérations non classées dans les règles courantes."""
+    pending = list(
+        db.scalars(
+            select(Transaction).where(
+                Transaction.envelope_id.is_(None), Transaction.kind != "transfer"
+            )
+        )
+    )
+    return apply_rules(db, pending)

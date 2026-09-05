@@ -78,6 +78,69 @@
 </div>
 {% endif %}
 
+{% if provisioned %}
+<div class="card">
+  <p class="small"><strong>{{ provisioned }} enveloppe(s)</strong> viennent d'être dotées automatiquement depuis votre budget de référence pour {{ period_label(period) }}.</p>
+</div>
+{% endif %}
+
+{% if not reference_total %}
+<div class="card">
+  <div class="card-head"><h2>Budget de référence à définir</h2></div>
+  <p class="small dim">L'application peut déduire le montant de chaque enveloppe de ce que vous avez réellement dépensé, puis le figer et le reporter chaque mois.</p>
+  <div class="form-actions">
+    <a class="btn primary" href="{{ url_for('calibration_page') }}">Calibrer sur mon historique</a>
+  </div>
+</div>
+{% elif review_proposals %}
+<div class="card">
+  <div class="card-head">
+    <h2>Revue du budget proposée</h2>
+    <span class="pill warn">{{ review_proposals | length }} enveloppe{{ 's' if review_proposals | length > 1 }}</span>
+  </div>
+  <p class="small dim">
+    Vos dépenses s'écartent durablement de vos montants de référence, par exemple
+    {% for p in review_proposals[:2] %}<strong>{{ p.envelope.name }}</strong> ({{ p.current_cents | money_short }} → {{ p.proposed_cents | money_short }}){{ ", " if not loop.last }}{% endfor %}.
+    Rien ne change tant que vous n'avez pas validé.
+  </p>
+  <div class="form-actions">
+    <a class="btn primary" href="{{ url_for('review_page') }}">Voir la revue</a>
+  </div>
+</div>
+{% endif %}
+
+{% if rule_suggestions %}
+<div class="card">
+  <div class="card-head">
+    <h2>Commerçants à classer</h2>
+    <a class="btn sm ghost" href="{{ url_for('rules_page') }}">Tout voir</a>
+  </div>
+  <p class="small dim">Ces libellés reviennent dans vos relevés sans qu'aucune règle ne les reconnaisse. Une règle acceptée classe aussi tout l'historique correspondant.</p>
+  <div class="list">
+    {% for s in rule_suggestions[:4] %}
+    <div class="suggestion">
+      <div class="who">
+        <strong class="truncate">{{ s.pattern }}</strong>
+        <div class="tiny mute">{{ s.count }} opérations · {{ s.total_cents | money_short }}</div>
+      </div>
+      <div class="act">
+        {% if s.envelope_id %}
+        <form method="post" action="{{ url_for('rule_from_suggestion') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="pattern" value="{{ s.pattern }}">
+          <input type="hidden" name="envelope_id" value="{{ s.envelope_id }}">
+          <button class="btn sm" type="submit">→ {{ s.envelope_name }}</button>
+        </form>
+        {% else %}
+        <a class="btn sm ghost" href="{{ url_for('rules_page') }}">Choisir une enveloppe</a>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
 <div class="grid g-2-1">
   <div>
     <div class="card">

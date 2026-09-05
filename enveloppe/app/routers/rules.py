@@ -10,7 +10,12 @@ from sqlalchemy.orm import Session
 from ..db import get_session
 from ..models import Envelope, Rule, Transaction
 from ..security import current_user
-from ..services.categorizer import apply_rules
+from ..services.categorizer import (
+    apply_rules,
+    create_rule,
+    recategorize_all,
+    suggest_rules,
+)
 from ..services.money import euros_to_cents
 from ..templating import csrf_guard, flash, path_for, render
 
@@ -24,6 +29,7 @@ def rules_page(request: Request, db: Session = Depends(get_session)):
         "rules.html",
         active="rules",
         rules=list(db.scalars(select(Rule).order_by(Rule.priority, Rule.pattern))),
+        suggestions=suggest_rules(db),
         envelopes=list(
             db.scalars(
                 select(Envelope)
@@ -101,4 +107,30 @@ def rules_apply(
     count = apply_rules(db, list(db.scalars(query)), only_uncategorized=(scope == "pending"))
     response = RedirectResponse(path_for(request, "rules_page"), status_code=303)
     flash(response, f"{count} opération(s) recatégorisée(s).")
+    return response
+
+
+@router.post(
+    "/regles/suggestion", name="rule_from_suggestion", dependencies=[Depends(csrf_guard)]
+)
+def rule_from_suggestion(
+    request: Request,
+    pattern: str = Form(...),
+    envelope_id: int = Form(...),
+    db: Session = Depends(get_session),
+):
+    """Accepte une suggestion : crée la règle et l'applique à l'historique."""
+    envelope = db.get(Envelope, envelope_id)
+    if envelope is None:
+        raise HTTPException(status_code=404, detail="Enveloppe introuvable.")
+
+    create_rule(db, pattern, envelope_id)
+    classified = recategorize_all(db)
+
+    response = RedirectResponse(path_for(request, "rules_page"), status_code=303)
+    flash(
+        response,
+        f"« {pattern} » ira désormais dans « {envelope.name} » — "
+        f"{classified} opération(s) classée(s) rétroactivement.",
+    )
     return response

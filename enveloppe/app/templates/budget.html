@@ -20,6 +20,7 @@
     <button class="btn" type="submit">Remplir les vides</button>
   </form>
   <button class="btn" type="button" data-toggle="#move-money">⇄ Déplacer de l'argent</button>
+  <a class="btn" href="{{ url_for('calibration_page') }}">◎ Calibrer</a>
 </div>
 
 <form id="move-money" class="card hidden" method="post" action="{{ url_for('move_money') }}">
@@ -51,6 +52,33 @@
     <button class="btn primary" type="submit">Déplacer</button>
   </div>
 </form>
+
+{% if provisioned %}
+<div class="card">
+  <p class="small"><strong>{{ provisioned }} enveloppe(s)</strong> viennent d'être dotées automatiquement depuis votre budget de référence. Ajustez librement : ce mois-ci ne sera plus retouché tout seul.</p>
+</div>
+{% endif %}
+
+{% if review_count %}
+<div class="card">
+  <div class="card-head">
+    <h2>Revue du budget proposée</h2>
+    <span class="pill warn">{{ review_count }} enveloppe{{ 's' if review_count > 1 }}</span>
+  </div>
+  <p class="small dim">Vos dépenses réelles s'écartent durablement de vos montants de référence. Rien ne change tant que vous n'avez pas validé.</p>
+  <div class="form-actions">
+    <a class="btn primary" href="{{ url_for('review_page') }}">Voir la revue</a>
+  </div>
+</div>
+{% elif not reference_total %}
+<div class="card">
+  <div class="card-head"><h2>Aucun budget de référence</h2></div>
+  <p class="small dim">L'application peut déduire vos montants de ce que vous avez réellement dépensé, mois par mois, puis les figer et les reporter chaque mois. Rien n'est écrit sans votre validation.</p>
+  <div class="form-actions">
+    <a class="btn primary" href="{{ url_for('calibration_page') }}">Calibrer sur mon historique</a>
+  </div>
+</div>
+{% endif %}
 
 <div class="grid g4" style="margin-bottom:16px">
   <div class="kpi accent">

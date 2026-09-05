@@ -16,6 +16,38 @@
   <button class="btn primary" type="button" data-toggle="#new-rule">+ Nouvelle règle</button>
 </div>
 
+{% if suggestions %}
+<div class="card">
+  <div class="card-head">
+    <h2>Commerçants détectés dans vos opérations</h2>
+    <span class="pill warn">{{ suggestions | length }}</span>
+  </div>
+  <p class="small dim">Ces libellés reviennent plusieurs fois sans qu'aucune règle ne les reconnaisse. Accepter une suggestion crée la règle <em>et</em> classe rétroactivement toutes les opérations correspondantes.</p>
+  <div class="list">
+    {% for s in suggestions %}
+    <form class="suggestion" method="post" action="{{ url_for('rule_from_suggestion') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="pattern" value="{{ s.pattern }}">
+      <div class="who">
+        <strong class="truncate">{{ s.pattern }}</strong>
+        <div class="tiny mute truncate">{{ s.sample_label }}</div>
+      </div>
+      <div class="act">
+        <span class="pill">{{ s.count }} × · {{ s.total_cents | money_short }}</span>
+        <select name="envelope_id" aria-label="Enveloppe pour {{ s.pattern }}" required>
+          {% if not s.envelope_id %}<option value="" selected>Choisir…</option>{% endif %}
+          {% for envelope in envelopes %}
+          <option value="{{ envelope.id }}" {{ 'selected' if envelope.id == s.envelope_id }}>{{ envelope.name }}</option>
+          {% endfor %}
+        </select>
+        <button class="btn sm primary" type="submit">Classer</button>
+      </div>
+    </form>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
 <form id="new-rule" class="card hidden" method="post" action="{{ url_for('rule_create') }}">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <div class="card-head"><h2>Nouvelle règle</h2></div>

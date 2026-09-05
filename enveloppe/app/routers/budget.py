@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from ..db import get_session
 from ..models import Envelope, EnvelopeGroup
 from ..security import current_user
+from ..services import calibration
 from ..services.budget import (
     autofill_month,
     current_period,
@@ -29,6 +30,8 @@ def budget_page(
     request: Request, period: str | None = None, db: Session = Depends(get_session)
 ):
     period = period or current_period()
+    # Le mois en cours est doté depuis la référence s'il ne l'a jamais été.
+    provisioned = calibration.ensure_provisioned(db, period)
     summary = month_summary(db, period)
     return render(
         request,
@@ -39,6 +42,10 @@ def budget_page(
         next_period=shift_period(period, 1),
         summary=summary,
         groups=list(db.scalars(select(EnvelopeGroup).order_by(EnvelopeGroup.position))),
+        reference_total=calibration.reference_total(db),
+        auto_apply=calibration.auto_apply_enabled(db),
+        review_count=len(calibration.review_pending(db, period)),
+        provisioned=provisioned,
     )
 
 
@@ -239,4 +246,127 @@ def group_create(
         db.commit()
     response = RedirectResponse(path_for(request, "envelopes_page"), status_code=303)
     flash(response, "Groupe créé.")
+    return response
+
+
+# --------------------------------------------------------------------------
+# Calibrage sur l'historique et revue du budget
+# --------------------------------------------------------------------------
+
+
+def _selected_ids(form) -> set[int]:
+    ids: set[int] = set()
+    for value in form.getlist("envelope_id"):
+        try:
+            ids.add(int(value))
+        except (TypeError, ValueError):
+            continue
+    return ids
+
+
+@router.get("/budget/calibrage", name="calibration_page")
+def calibration_page(request: Request, db: Session = Depends(get_session)):
+    """Dotations de référence déduites de l'historique, avant validation."""
+    proposals = calibration.calibrate(db)
+    return render(
+        request,
+        "calibration.html",
+        active="budget",
+        mode="calibrage",
+        proposals=proposals,
+        periods=proposals[0].periods if proposals else [],
+        reference_total=calibration.reference_total(db),
+        auto_apply=calibration.auto_apply_enabled(db),
+    )
+
+
+@router.post(
+    "/budget/calibrage", name="calibration_apply", dependencies=[Depends(csrf_guard)]
+)
+async def calibration_apply(request: Request, db: Session = Depends(get_session)):
+    form = await request.form()
+    proposals = calibration.calibrate(db)
+    written = calibration.apply_proposals(db, proposals, _selected_ids(form))
+
+    response = RedirectResponse(path_for(request, "budget_page"), status_code=303)
+    if written:
+        flash(
+            response,
+            f"{written} enveloppe(s) calibrée(s) sur votre historique. "
+            "Ces montants servent désormais de référence chaque mois.",
+        )
+    else:
+        flash(response, "Aucune dotation modifiée.", "info")
+    return response
+
+
+@router.get("/budget/revue", name="review_page")
+def review_page(request: Request, db: Session = Depends(get_session)):
+    proposals = calibration.review(db)
+    return render(
+        request,
+        "calibration.html",
+        active="budget",
+        mode="revue",
+        proposals=proposals,
+        periods=proposals[0].periods if proposals else [],
+        reference_total=calibration.reference_total(db),
+        auto_apply=calibration.auto_apply_enabled(db),
+    )
+
+
+@router.post("/budget/revue", name="review_apply", dependencies=[Depends(csrf_guard)])
+async def review_apply(request: Request, db: Session = Depends(get_session)):
+    form = await request.form()
+    response = RedirectResponse(path_for(request, "budget_page"), status_code=303)
+
+    if form.get("action") == "dismiss":
+        calibration.dismiss_review(db, current_period())
+        flash(
+            response,
+            "Revue reportée. Elle sera proposée de nouveau le mois prochain.",
+            "info",
+        )
+        return response
+
+    proposals = calibration.review(db)
+    written = calibration.apply_proposals(db, proposals, _selected_ids(form))
+    calibration.dismiss_review(db, current_period())
+    if written:
+        flash(response, f"{written} dotation(s) de référence mise(s) à jour.")
+    else:
+        flash(response, "Aucune dotation modifiée.", "info")
+    return response
+
+
+@router.post(
+    "/budget/reference", name="apply_reference", dependencies=[Depends(csrf_guard)]
+)
+def apply_reference(
+    request: Request, period: str = Form(...), db: Session = Depends(get_session)
+):
+    """Recopie la référence dans le mois, sans toucher aux dotations déjà posées."""
+    written = calibration.apply_reference(db, period)
+    response = RedirectResponse(
+        path_for(request, "budget_page").include_query_params(period=period),
+        status_code=303,
+    )
+    flash(response, f"{written} enveloppe(s) dotée(s) depuis le budget de référence.")
+    return response
+
+
+@router.post(
+    "/budget/auto", name="toggle_auto_apply", dependencies=[Depends(csrf_guard)]
+)
+def toggle_auto_apply(
+    request: Request, enabled: str = Form(""), db: Session = Depends(get_session)
+):
+    calibration.set_auto_apply(db, bool(enabled))
+    response = RedirectResponse(path_for(request, "budget_page"), status_code=303)
+    flash(
+        response,
+        "Chaque nouveau mois sera doté automatiquement depuis la référence."
+        if enabled
+        else "Les nouveaux mois ne seront plus dotés automatiquement.",
+    )
     return response

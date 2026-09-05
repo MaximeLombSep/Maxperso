@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from ..db import get_session
 from ..models import Account, Transaction
 from ..security import current_user
-from ..services import analytics, cards, insurance, savings
+from ..services import analytics, calibration, cards, categorizer, insurance, savings
 from ..services.budget import (
     account_balances,
     current_period,
@@ -30,6 +30,8 @@ def dashboard(
     db: Session = Depends(get_session),
 ):
     period = period or current_period()
+    # Le mois en cours hérite du budget de référence s'il n'a jamais été doté.
+    provisioned = calibration.ensure_provisioned(db, period)
     summary = month_summary(db, period)
     balances = account_balances(db)
     accounts = list(
@@ -86,6 +88,10 @@ def dashboard(
         overspent=overspent,
         biggest=biggest,
         to_review=to_review,
+        provisioned=provisioned,
+        reference_total=calibration.reference_total(db),
+        review_proposals=calibration.review_pending(db, period),
+        rule_suggestions=categorizer.suggest_rules(db, limit=5),
         insurance_alerts=insurance.alerts(db),
         insurance_totals=insurance.totals(db),
         security=savings.security_fund(db),
