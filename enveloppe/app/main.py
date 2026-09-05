@@ -31,6 +31,7 @@ from .routers import (
     savings,
     transactions,
 )
+from .templating import path_for
 from .security import CSRF_COOKIE, new_csrf_token, secure_cookies_enabled
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -161,7 +162,7 @@ def create_app() -> FastAPI:
         wants_html = not wants_json
         if exc.status_code == 401 and wants_html:
             return RedirectResponse(
-                request.url_for("login_form").include_query_params(
+                path_for(request, "login_form").include_query_params(
                     next=request.url.path
                 ),
                 status_code=303,

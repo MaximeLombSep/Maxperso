@@ -10,6 +10,8 @@ from urllib.parse import quote, unquote
 
 from fastapi import HTTPException, Request, status
 from fastapi.templating import Jinja2Templates
+from jinja2 import pass_context
+from starlette.datastructures import URL
 from starlette.responses import Response
 
 from .config import settings
@@ -21,6 +23,29 @@ TEMPLATES_DIR = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 FLASH_COOKIE = "enveloppe_flash"
+
+
+def path_for(request: Request, name: str, **path_params) -> URL:
+    """URL racine-relative d'une route : « /budget », jamais « http://hôte/budget ».
+
+    Derrière l'ingress Home Assistant, l'application est jointe sur son adresse
+    interne (`172.30.x.x:8099`) alors que le navigateur, lui, est sur le domaine
+    de Home Assistant. Une URL absolue construite depuis la requête reçue
+    porterait donc un hôte que le navigateur ne peut pas atteindre — feuille de
+    style non chargée, redirections vers le vide. Une URL relative est résolue
+    par le navigateur contre l'origine qu'il connaît, ce qui reste juste en
+    accès direct comme derrière n'importe quel proxy.
+    """
+    absolute = request.url_for(name, **path_params)
+    relative = absolute.path
+    if absolute.query:
+        relative = f"{relative}?{absolute.query}"
+    return URL(relative)
+
+
+@pass_context
+def _url_for(context, name: str, /, **path_params) -> URL:
+    return path_for(context["request"], name, **path_params)
 
 
 def _date_fr(value: date | datetime | None, fmt: str = "%d/%m/%Y") -> str:
@@ -47,6 +72,8 @@ templates.env.filters["money_short"] = format_cents_short
 templates.env.filters["date_fr"] = _date_fr
 templates.env.filters["percent"] = _percent
 templates.env.filters["decimal_fr"] = _decimal_fr
+# Remplace le `url_for` de Starlette, qui produit des URLs absolues.
+templates.env.globals["url_for"] = _url_for
 templates.env.globals["period_label"] = period_label
 templates.env.globals["currency"] = settings.currency
 templates.env.globals["today"] = date.today

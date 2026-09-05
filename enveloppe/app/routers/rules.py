@@ -12,7 +12,7 @@ from ..models import Envelope, Rule, Transaction
 from ..security import current_user
 from ..services.categorizer import apply_rules
 from ..services.money import euros_to_cents
-from ..templating import csrf_guard, flash, render
+from ..templating import csrf_guard, flash, path_for, render
 
 router = APIRouter(dependencies=[Depends(current_user)])
 
@@ -62,7 +62,7 @@ def rule_create(
     )
     db.commit()
 
-    response = RedirectResponse(request.url_for("rules_page"), status_code=303)
+    response = RedirectResponse(path_for(request, "rules_page"), status_code=303)
     flash(response, "Règle ajoutée.")
     return response
 
@@ -73,7 +73,7 @@ def rule_delete(request: Request, rule_id: int, db: Session = Depends(get_sessio
     if rule is not None:
         db.delete(rule)
         db.commit()
-    response = RedirectResponse(request.url_for("rules_page"), status_code=303)
+    response = RedirectResponse(path_for(request, "rules_page"), status_code=303)
     flash(response, "Règle supprimée.")
     return response
 
@@ -85,7 +85,7 @@ def rule_toggle(request: Request, rule_id: int, db: Session = Depends(get_sessio
         raise HTTPException(status_code=404, detail="Règle introuvable.")
     rule.enabled = not rule.enabled
     db.commit()
-    return RedirectResponse(request.url_for("rules_page"), status_code=303)
+    return RedirectResponse(path_for(request, "rules_page"), status_code=303)
 
 
 @router.post("/regles/appliquer", name="rules_apply", dependencies=[Depends(csrf_guard)])
@@ -99,6 +99,6 @@ def rules_apply(
     query = query.where(Transaction.reviewed.is_(False))
 
     count = apply_rules(db, list(db.scalars(query)), only_uncategorized=(scope == "pending"))
-    response = RedirectResponse(request.url_for("rules_page"), status_code=303)
+    response = RedirectResponse(path_for(request, "rules_page"), status_code=303)
     flash(response, f"{count} opération(s) recatégorisée(s).")
     return response

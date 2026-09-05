@@ -19,7 +19,7 @@ from ..services.budget import (
     shift_period,
 )
 from ..services.money import euros_to_cents, format_cents
-from ..templating import csrf_guard, flash, render
+from ..templating import csrf_guard, flash, path_for, render
 
 router = APIRouter(dependencies=[Depends(current_user)])
 
@@ -87,7 +87,7 @@ def autofill(
 ):
     filled = autofill_month(db, period, mode)
     response = RedirectResponse(
-        request.url_for("budget_page").include_query_params(period=period), status_code=303
+        path_for(request, "budget_page").include_query_params(period=period), status_code=303
     )
     flash(response, f"{filled} enveloppe(s) dotée(s) automatiquement.")
     return response
@@ -104,7 +104,7 @@ def move_money(
 ):
     """Reprend de l'argent dans une enveloppe pour en couvrir une autre."""
     response = RedirectResponse(
-        request.url_for("budget_page").include_query_params(period=period), status_code=303
+        path_for(request, "budget_page").include_query_params(period=period), status_code=303
     )
     try:
         source, target = move_between(
@@ -153,7 +153,7 @@ def envelope_create(
     from datetime import datetime
 
     if db.scalar(select(Envelope).where(Envelope.name == name.strip())):
-        response = RedirectResponse(request.url_for("envelopes_page"), status_code=303)
+        response = RedirectResponse(path_for(request, "envelopes_page"), status_code=303)
         flash(response, "Une enveloppe porte déjà ce nom.", "error")
         return response
 
@@ -175,7 +175,7 @@ def envelope_create(
     db.add(envelope)
     db.commit()
 
-    response = RedirectResponse(request.url_for("envelopes_page"), status_code=303)
+    response = RedirectResponse(path_for(request, "envelopes_page"), status_code=303)
     flash(response, f"Enveloppe « {envelope.name} » créée.")
     return response
 
@@ -220,7 +220,7 @@ def envelope_update(
     envelope.archived = bool(archived)
     db.commit()
 
-    response = RedirectResponse(request.url_for("envelopes_page"), status_code=303)
+    response = RedirectResponse(path_for(request, "envelopes_page"), status_code=303)
     flash(response, "Enveloppe mise à jour.")
     return response
 
@@ -237,6 +237,6 @@ def group_create(
             )
         )
         db.commit()
-    response = RedirectResponse(request.url_for("envelopes_page"), status_code=303)
+    response = RedirectResponse(path_for(request, "envelopes_page"), status_code=303)
     flash(response, "Groupe créé.")
     return response

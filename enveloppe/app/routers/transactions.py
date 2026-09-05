@@ -15,7 +15,7 @@ from ..security import current_user
 from ..services.budget import current_period, period_bounds, shift_period
 from ..services.categorizer import apply_rules, learn_from_assignment, suggest_pattern
 from ..services.importer import detect_transfers
-from ..templating import csrf_guard, flash, render
+from ..templating import csrf_guard, flash, path_for, render
 
 router = APIRouter(dependencies=[Depends(current_user)])
 
@@ -170,7 +170,7 @@ async def bulk_assign(request: Request, db: Session = Depends(get_session)):
     db.commit()
 
     response = RedirectResponse(
-        request.headers.get("referer") or request.url_for("transactions_page"),
+        request.headers.get("referer") or path_for(request, "transactions_page"),
         status_code=303,
     )
     flash(response, f"{updated} opération(s) affectée(s).")
@@ -196,7 +196,7 @@ def transaction_notes(
     db.commit()
 
     response = RedirectResponse(
-        request.headers.get("referer") or request.url_for("transactions_page"),
+        request.headers.get("referer") or path_for(request, "transactions_page"),
         status_code=303,
     )
     flash(response, "Opération mise à jour.")
@@ -207,7 +207,7 @@ def transaction_notes(
 def detect_transfers_route(request: Request, db: Session = Depends(get_session)):
     paired = detect_transfers(db)
     response = RedirectResponse(
-        request.headers.get("referer") or request.url_for("transactions_page"),
+        request.headers.get("referer") or path_for(request, "transactions_page"),
         status_code=303,
     )
     flash(response, f"{paired} virement(s) interne(s) apparié(s).")
@@ -226,7 +226,7 @@ def recategorize(request: Request, db: Session = Depends(get_session)):
     )
     count = apply_rules(db, pending)
     response = RedirectResponse(
-        request.headers.get("referer") or request.url_for("transactions_page"),
+        request.headers.get("referer") or path_for(request, "transactions_page"),
         status_code=303,
     )
     flash(response, f"{count} opération(s) catégorisée(s) par les règles.")

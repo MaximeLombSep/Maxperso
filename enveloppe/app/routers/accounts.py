@@ -25,7 +25,7 @@ from ..services import cards as cards_service
 from ..services import savings as savings_service
 from ..services.budget import account_balances
 from ..services.money import euros_to_cents, format_cents
-from ..templating import csrf_guard, flash, render
+from ..templating import csrf_guard, flash, path_for, render
 
 router = APIRouter(dependencies=[Depends(current_user)])
 
@@ -107,7 +107,7 @@ def account_create(
     )
     db.commit()
 
-    response = RedirectResponse(request.url_for("accounts_page"), status_code=303)
+    response = RedirectResponse(path_for(request, "accounts_page"), status_code=303)
     flash(response, "Compte ajouté.")
     return response
 
@@ -153,7 +153,7 @@ def account_update(
 
     db.commit()
 
-    response = RedirectResponse(request.url_for("accounts_page"), status_code=303)
+    response = RedirectResponse(path_for(request, "accounts_page"), status_code=303)
     flash(response, "Compte mis à jour.")
     return response
 
@@ -189,7 +189,7 @@ def change_password(
     user: User = Depends(current_user),
     db: Session = Depends(get_session),
 ):
-    response = RedirectResponse(request.url_for("settings_page"), status_code=303)
+    response = RedirectResponse(path_for(request, "settings_page"), status_code=303)
 
     if not verify_password(current, user.password_hash):
         flash(response, "Mot de passe actuel incorrect.", "error")
@@ -248,7 +248,7 @@ def batch_rollback(
     db: Session = Depends(get_session),
 ):
     """Annule un import : supprime les opérations qu'il a créées, et lui seul."""
-    response = RedirectResponse(request.url_for("settings_page"), status_code=303)
+    response = RedirectResponse(path_for(request, "settings_page"), status_code=303)
     batch = db.get(ImportBatch, batch_id)
     if batch is None:
         flash(response, "Import introuvable.", "error")

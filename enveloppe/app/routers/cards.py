@@ -14,7 +14,7 @@ from ..models import Account, Transaction
 from ..security import current_user
 from ..services import cards as service
 from ..services.budget import account_balances
-from ..templating import csrf_guard, flash, render
+from ..templating import csrf_guard, flash, path_for, render
 
 router = APIRouter(dependencies=[Depends(current_user)])
 
@@ -62,7 +62,7 @@ def cards_page(request: Request, db: Session = Depends(get_session)):
 @router.post("/cartes/rapprocher", name="cards_auto_match", dependencies=[Depends(csrf_guard)])
 def cards_auto_match(request: Request, db: Session = Depends(get_session)):
     matched = service.auto_match(db)
-    response = RedirectResponse(request.url_for("cards_page"), status_code=303)
+    response = RedirectResponse(path_for(request, "cards_page"), status_code=303)
     if matched:
         flash(response, f"{matched} prélèvement(s) de carte rapproché(s).")
     else:
@@ -101,7 +101,7 @@ def card_link_settlement(
         raise HTTPException(status_code=404, detail="Cycle introuvable.")
 
     settled = service.link_settlement(db, card, cycle, settlement)
-    response = RedirectResponse(request.url_for("cards_page"), status_code=303)
+    response = RedirectResponse(path_for(request, "cards_page"), status_code=303)
     flash(
         response,
         f"Cycle {period} soldé : {settled} achat(s) rattaché(s) au prélèvement.",
@@ -122,6 +122,6 @@ def card_unlink_settlement(
         raise HTTPException(status_code=404, detail="Opération introuvable.")
 
     released = service.unlink_settlement(db, settlement)
-    response = RedirectResponse(request.url_for("cards_page"), status_code=303)
+    response = RedirectResponse(path_for(request, "cards_page"), status_code=303)
     flash(response, f"Rapprochement défait : {released} achat(s) redeviennent en encours.")
     return response

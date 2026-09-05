@@ -18,7 +18,7 @@ from ..security import current_user
 from ..services import cards as cards_service
 from ..services import importer
 from ..services import pdf_import
-from ..templating import csrf_guard, flash, render
+from ..templating import csrf_guard, flash, path_for, render
 
 router = APIRouter(dependencies=[Depends(current_user)])
 
@@ -79,17 +79,17 @@ async def import_preview(
 
     content = await upload.read()
     if not content:
-        response = RedirectResponse(request.url_for("import_form"), status_code=303)
+        response = RedirectResponse(path_for(request, "import_form"), status_code=303)
         flash(response, "Fichier vide.", "error")
         return response
     if len(content) > MAX_IMPORT_BYTES:
-        response = RedirectResponse(request.url_for("import_form"), status_code=303)
+        response = RedirectResponse(path_for(request, "import_form"), status_code=303)
         flash(response, "Fichier trop volumineux (20 Mo maximum).", "error")
         return response
 
     suffix = Path(upload.filename or "releve.csv").suffix.lower()
     if suffix not in {".csv", ".txt", ".ofx", ".qfx", ".pdf"}:
-        response = RedirectResponse(request.url_for("import_form"), status_code=303)
+        response = RedirectResponse(path_for(request, "import_form"), status_code=303)
         flash(response, "Formats acceptés : CSV, TXT, OFX, QFX, PDF.", "error")
         return response
 
@@ -103,7 +103,7 @@ async def import_preview(
             pdf_preview = pdf_import.preview_pdf(content)
         except ValueError as exc:
             staged.unlink(missing_ok=True)
-            response = RedirectResponse(request.url_for("import_form"), status_code=303)
+            response = RedirectResponse(path_for(request, "import_form"), status_code=303)
             flash(response, str(exc), "error")
             return response
 
@@ -156,7 +156,7 @@ async def import_preview(
         preview = importer.preview_csv(content)
     except ValueError as exc:
         staged.unlink(missing_ok=True)
-        response = RedirectResponse(request.url_for("import_form"), status_code=303)
+        response = RedirectResponse(path_for(request, "import_form"), status_code=303)
         flash(response, str(exc), "error")
         return response
 
@@ -259,7 +259,7 @@ async def import_confirm(
                 profile_id = existing.id
 
     if not parsed:
-        response = RedirectResponse(request.url_for("import_form"), status_code=303)
+        response = RedirectResponse(path_for(request, "import_form"), status_code=303)
         flash(
             response,
             "Aucune opération lisible : " + (errors[0] if errors else "vérifiez le mapping."),
@@ -392,6 +392,6 @@ def profile_delete(request: Request, profile_id: int, db: Session = Depends(get_
     if profile is not None:
         db.delete(profile)
         db.commit()
-    response = RedirectResponse(request.url_for("import_form"), status_code=303)
+    response = RedirectResponse(path_for(request, "import_form"), status_code=303)
     flash(response, "Profil supprimé.")
     return response

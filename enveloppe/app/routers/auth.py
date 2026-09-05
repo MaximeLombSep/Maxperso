@@ -18,7 +18,7 @@ from ..security import (
     verify_password,
 )
 from ..services.seed import bootstrap
-from ..templating import csrf_guard, flash, render
+from ..templating import csrf_guard, flash, path_for, render
 from ..models import User
 from sqlalchemy import select
 
@@ -35,7 +35,7 @@ def _safe_next(raw: str | None) -> str:
 @router.get("/installation", name="setup_form")
 def setup_form(request: Request, db: Session = Depends(get_session)):
     if has_user(db):
-        return RedirectResponse(request.url_for("login_form"), status_code=303)
+        return RedirectResponse(path_for(request, "login_form"), status_code=303)
     return render(request, "setup.html", active="setup", problems=[])
 
 
@@ -48,7 +48,7 @@ def setup_submit(
     db: Session = Depends(get_session),
 ):
     if has_user(db):
-        return RedirectResponse(request.url_for("login_form"), status_code=303)
+        return RedirectResponse(path_for(request, "login_form"), status_code=303)
 
     problems = password_problems(password)
     if password != password_confirm:
@@ -61,7 +61,7 @@ def setup_submit(
     user = create_user(db, username, password)
     bootstrap(db)
 
-    response = RedirectResponse(request.url_for("dashboard"), status_code=303)
+    response = RedirectResponse(path_for(request, "dashboard"), status_code=303)
     _set_session(response, user)
     flash(response, "Installation terminée. Vos enveloppes de départ sont prêtes.")
     return response
@@ -70,7 +70,7 @@ def setup_submit(
 @router.get("/connexion", name="login_form")
 def login_form(request: Request, db: Session = Depends(get_session)):
     if not has_user(db):
-        return RedirectResponse(request.url_for("setup_form"), status_code=303)
+        return RedirectResponse(path_for(request, "setup_form"), status_code=303)
     return render(
         request,
         "login.html",
@@ -106,7 +106,7 @@ def login_submit(
 
 @router.post("/deconnexion", name="logout", dependencies=[Depends(csrf_guard)])
 def logout(request: Request):
-    response = RedirectResponse(request.url_for("login_form"), status_code=303)
+    response = RedirectResponse(path_for(request, "login_form"), status_code=303)
     response.delete_cookie(SESSION_COOKIE, path="/")
     return response
 

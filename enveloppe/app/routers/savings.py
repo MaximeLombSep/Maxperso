@@ -14,7 +14,7 @@ from ..models import Account, SavingsContribution, SavingsGoal
 from ..security import current_user
 from ..services import savings as service
 from ..services.money import euros_to_cents
-from ..templating import csrf_guard, flash, render
+from ..templating import csrf_guard, flash, path_for, render
 
 router = APIRouter(dependencies=[Depends(current_user)])
 
@@ -76,7 +76,7 @@ def goal_create(
     db.add(goal)
     db.commit()
 
-    response = RedirectResponse(request.url_for("savings_page"), status_code=303)
+    response = RedirectResponse(path_for(request, "savings_page"), status_code=303)
     flash(response, f"Objectif « {goal.name} » créé.")
     return response
 
@@ -86,7 +86,7 @@ def security_settings(
     request: Request, months: int = Form(4), db: Session = Depends(get_session)
 ):
     service.set_security_months(db, max(1, min(int(months), 24)))
-    response = RedirectResponse(request.url_for("savings_page"), status_code=303)
+    response = RedirectResponse(path_for(request, "savings_page"), status_code=303)
     flash(response, "Cible du fonds de sécurité mise à jour.")
     return response
 
@@ -125,7 +125,7 @@ def goal_update(
     goal.notes = notes[:2000]
     db.commit()
 
-    response = RedirectResponse(request.url_for("savings_page"), status_code=303)
+    response = RedirectResponse(path_for(request, "savings_page"), status_code=303)
     flash(response, "Objectif mis à jour.")
     return response
 
@@ -148,7 +148,7 @@ def contribution_add(
     )
     service.add_contribution(db, goal, euros_to_cents(amount), when, note)
 
-    response = RedirectResponse(request.url_for("savings_page"), status_code=303)
+    response = RedirectResponse(path_for(request, "savings_page"), status_code=303)
     flash(response, "Versement enregistré.")
     return response
 
@@ -161,6 +161,6 @@ def contribution_delete(
     if contribution is not None:
         db.delete(contribution)
         db.commit()
-    response = RedirectResponse(request.url_for("savings_page"), status_code=303)
+    response = RedirectResponse(path_for(request, "savings_page"), status_code=303)
     flash(response, "Versement supprimé.")
     return response

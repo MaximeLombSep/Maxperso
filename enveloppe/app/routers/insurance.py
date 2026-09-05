@@ -15,7 +15,7 @@ from ..security import current_user
 from ..services import documents as docs
 from ..services import insurance as service
 from ..services.money import euros_to_cents
-from ..templating import csrf_guard, flash, render
+from ..templating import csrf_guard, flash, path_for, render
 
 router = APIRouter(dependencies=[Depends(current_user)])
 
@@ -89,7 +89,7 @@ def contract_create(
     db.commit()
 
     response = RedirectResponse(
-        request.url_for("contract_detail", contract_id=contract.id), status_code=303
+        path_for(request, "contract_detail", contract_id=contract.id), status_code=303
     )
     flash(response, f"Contrat « {contract.name} » enregistré.")
     return response
@@ -163,7 +163,7 @@ def contract_update(
     db.commit()
 
     response = RedirectResponse(
-        request.url_for("contract_detail", contract_id=contract.id), status_code=303
+        path_for(request, "contract_detail", contract_id=contract.id), status_code=303
     )
     flash(response, "Contrat mis à jour.")
     return response
@@ -180,7 +180,7 @@ def contract_delete(request: Request, contract_id: int, db: Session = Depends(ge
     db.delete(contract)
     db.commit()
 
-    response = RedirectResponse(request.url_for("insurance_page"), status_code=303)
+    response = RedirectResponse(path_for(request, "insurance_page"), status_code=303)
     flash(response, "Contrat et pièces jointes supprimés.")
     return response
 
@@ -199,7 +199,7 @@ async def document_upload(
 
     content = await upload.read()
     response = RedirectResponse(
-        request.url_for("contract_detail", contract_id=contract_id), status_code=303
+        path_for(request, "contract_detail", contract_id=contract_id), status_code=303
     )
     try:
         meta = docs.store(
@@ -254,7 +254,7 @@ def document_delete(request: Request, document_id: int, db: Session = Depends(ge
     db.commit()
 
     response = RedirectResponse(
-        request.url_for("contract_detail", contract_id=contract_id), status_code=303
+        path_for(request, "contract_detail", contract_id=contract_id), status_code=303
     )
     flash(response, "Document supprimé.")
     return response
