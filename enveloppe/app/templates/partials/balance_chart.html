@@ -1,0 +1,64 @@
+{# Courbe du solde, mois par mois. Une seule série : pas de légende, le
+   titre de la carte la nomme. L'échelle est annoncée sur la grille, le
+   dernier point est le seul étiqueté. #}
+<div class="chart" data-chart>
+  <svg viewBox="0 0 360 170" role="img" preserveAspectRatio="xMidYMid meet"
+       aria-label="Solde de vos comptes mois par mois, de {{ chart.marks[0].point.label }} à {{ chart.last.point.label }}">
+
+    {% for y, cents in chart.grid %}
+    <line class="grid" x1="38" x2="352" y1="{{ y }}" y2="{{ y }}"></line>
+    <text class="axis" x="34" y="{{ y + 3 }}" text-anchor="end">{{ cents | money_short }}</text>
+    {% endfor %}
+
+    {% if chart.zero_y is not none %}
+    <line class="zero" x1="38" x2="352" y1="{{ chart.zero_y }}" y2="{{ chart.zero_y }}"></line>
+    {% endif %}
+
+    <path class="area" d="{{ chart.area }}"></path>
+    <path class="line" d="{{ chart.line }}" vector-effect="non-scaling-stroke"></path>
+
+    {% for mark in chart.marks %}
+    {% if loop.index0 % 2 == 0 or loop.last %}
+    <text class="axis" x="{{ mark.x }}" y="162" text-anchor="middle">{{ mark.point.short }}</text>
+    {% endif %}
+    {% endfor %}
+
+    {% set bas = chart.lowest %}
+    {% if bas and bas.point.period != chart.last.point.period %}
+    <circle class="low" cx="{{ bas.x }}" cy="{{ bas.y }}" r="2.6"></circle>
+    {% endif %}
+
+    <circle class="head" cx="{{ chart.last.x }}" cy="{{ chart.last.y }}" r="3.6"></circle>
+    <text class="value" x="352" y="{{ chart.last.y - 8 if chart.last.y > 26 else chart.last.y + 14 }}"
+          text-anchor="end">{{ chart.last.point.cents | money_short }}</text>
+
+    {# Cibles de survol : plus larges que les points, pour le doigt. #}
+    <g class="hits">
+      {% for mark in chart.marks %}
+      <rect x="{{ mark.x - 12 }}" y="10" width="24" height="140"
+            data-mark data-x="{{ mark.x }}" data-y="{{ mark.y }}"
+            data-label="{{ mark.point.label }}" data-value="{{ mark.point.cents | money }}"></rect>
+      {% endfor %}
+    </g>
+    <line class="crosshair" data-crosshair x1="0" x2="0" y1="10" y2="150" hidden></line>
+    <circle class="focus" data-focus r="4" hidden></circle>
+  </svg>
+  <div class="tip" data-tip hidden></div>
+</div>
+
+<details class="disclose">
+  <summary>Voir les chiffres</summary>
+  <div class="scroll-x">
+    <table class="mini">
+      <thead><tr><th scope="col">Mois</th><th scope="col">Solde</th></tr></thead>
+      <tbody>
+        {% for mark in chart.marks %}
+        <tr>
+          <td>{{ mark.point.label }}</td>
+          <td class="num right">{{ mark.point.cents | money }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</details>

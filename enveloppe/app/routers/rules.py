@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from ..db import get_session
 from ..models import Envelope, Rule, Transaction
 from ..security import current_user
+from ..services.seed import seed_rules
 from ..services.categorizer import (
     apply_rules,
     create_rule,
@@ -133,4 +134,29 @@ def rule_from_suggestion(
         f"« {pattern} » ira désormais dans « {envelope.name} » — "
         f"{classified} opération(s) classée(s) rétroactivement.",
     )
+    return response
+
+
+@router.post(
+    "/regles/completer", name="rules_seed", dependencies=[Depends(csrf_guard)]
+)
+def rules_seed(request: Request, db: Session = Depends(get_session)):
+    """Ajoute les règles livrées manquantes, puis classe l'historique."""
+    added = seed_rules(db)
+    classified = recategorize_all(db)
+
+    response = RedirectResponse(path_for(request, "rules_page"), status_code=303)
+    if added:
+        flash(
+            response,
+            f"{added} règle(s) ajoutée(s) — {classified} opération(s) classée(s) "
+            "rétroactivement.",
+        )
+    else:
+        flash(
+            response,
+            f"Aucune règle à ajouter. {classified} opération(s) classée(s) avec "
+            "les règles existantes.",
+            "info",
+        )
     return response

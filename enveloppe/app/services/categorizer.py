@@ -407,8 +407,6 @@ CATEGORY_KEYWORDS: list[tuple[str, str]] = [
     ("MEUBLE", "Achats divers"),
     ("PRESSING", "Achats divers"),
     ("LAVERIE", "Achats divers"),
-    ("CREDIT", "Loyer / Crédit"),
-    ("PRET", "Loyer / Crédit"),
     ("SYNDIC", "Charges / Copropriété"),
     ("COPROPRIETE", "Charges / Copropriété"),
     ("CANTINE", "Achats divers"),

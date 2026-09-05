@@ -413,3 +413,177 @@ def money_age(db: Session, sample: int = AGE_SAMPLE) -> MoneyAge:
         sampled=len(recent),
         coverage=coverage,
     )
+
+
+# --------------------------------------------------------------------------
+# Solde mois par mois
+# --------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class BalancePoint:
+    period: str
+    cents: int
+
+    @property
+    def label(self) -> str:
+        from .budget import period_label
+
+        return period_label(self.period)
+
+    @property
+    def short(self) -> str:
+        from .budget import period_short
+
+        return period_short(self.period)
+
+
+def balance_series(
+    db: Session, months: int = 12, end: str | None = None
+) -> list[BalancePoint]:
+    """Solde à la fin de chaque mois, comptes courants et épargne.
+
+    Les cartes à débit différé sont exclues : leur « solde » est un encours à
+    payer, pas de l'argent disponible. L'additionner à un compte courant
+    reviendrait à compter deux fois la même dépense.
+
+    Le point de départ tient compte de tout ce qui précède la fenêtre : sans
+    cela, la courbe partirait du solde d'ouverture des comptes, c'est-à-dire
+    d'un chiffre que personne n'a jamais vu.
+    """
+    from .budget import current_period, shift_period
+
+    last = end or current_period()
+    first = shift_period(last, -(months - 1))
+
+    accounts = list(
+        db.scalars(
+            select(Account).where(
+                Account.archived.is_(False), Account.kind != "credit"
+            )
+        )
+    )
+    if not accounts:
+        return []
+
+    account_ids = [account.id for account in accounts]
+    opening = sum(account.opening_balance_cents for account in accounts)
+
+    rows = db.execute(
+        select(
+            func.strftime("%Y-%m", Transaction.op_date),
+            func.sum(Transaction.amount_cents),
+        )
+        .where(Transaction.account_id.in_(account_ids))
+        .group_by(func.strftime("%Y-%m", Transaction.op_date))
+    ).all()
+    by_period = {period: int(total or 0) for period, total in rows if period}
+
+    if not by_period:
+        return []
+
+    # Inutile de tracer six mois de trait plat avant le premier relevé : la
+    # courbe commence là où l'historique commence.
+    first = max(first, min(by_period))
+    if first >= last:
+        return []
+
+    # Tout ce qui précède la fenêtre est replié dans le point de départ.
+    running = opening + sum(
+        cents for period, cents in by_period.items() if period < first
+    )
+
+    points: list[BalancePoint] = []
+    step = first
+    while step <= last:
+        running += by_period.get(step, 0)
+        points.append(BalancePoint(period=step, cents=running))
+        step = shift_period(step, 1)
+    return points
+
+
+# Repère du tracé, en unités du `viewBox`. Le dessin est calculé ici plutôt
+# que dans le gabarit : une géométrie se teste, une expression Jinja non.
+CHART_W = 360
+CHART_H = 170
+CHART_LEFT = 38
+CHART_RIGHT = 352
+CHART_TOP = 14
+CHART_BOTTOM = 146
+
+
+@dataclass(frozen=True)
+class ChartPoint:
+    x: float
+    y: float
+    point: BalancePoint
+
+
+@dataclass(frozen=True)
+class BalanceChart:
+    """Tracé prêt à écrire dans un `<svg>`, bornes comprises."""
+
+    marks: list[ChartPoint] = field(default_factory=list)
+    line: str = ""
+    area: str = ""
+    grid: list[tuple[float, int]] = field(default_factory=list)
+    zero_y: float | None = None
+    low_cents: int = 0
+    high_cents: int = 0
+
+    @property
+    def last(self) -> ChartPoint | None:
+        return self.marks[-1] if self.marks else None
+
+    @property
+    def lowest(self) -> ChartPoint | None:
+        return min(self.marks, key=lambda m: m.point.cents) if self.marks else None
+
+
+def balance_chart(points: list[BalancePoint]) -> BalanceChart:
+    """Géométrie de la courbe de solde.
+
+    L'échelle n'est pas ancrée à zéro : sur un solde de 8 000 € qui varie de
+    300 €, un axe partant de zéro écraserait la courbe en trait plat. La
+    borne basse est donc affichée en clair sur la grille, et le zéro reçoit
+    sa propre ligne dès que le solde passe dans le rouge.
+    """
+    if len(points) < 2:
+        return BalanceChart()
+
+    values = [point.cents for point in points]
+    low, high = min(values), max(values)
+    if low < 0:
+        high = max(high, 0)
+    span = max(high - low, 1)
+    margin = max(span // 12, 100)
+    low -= margin
+    high += margin
+    span = high - low
+
+    def to_y(cents: int) -> float:
+        ratio = (cents - low) / span
+        return round(CHART_BOTTOM - ratio * (CHART_BOTTOM - CHART_TOP), 2)
+
+    step = (CHART_RIGHT - CHART_LEFT) / (len(points) - 1)
+    marks = [
+        ChartPoint(x=round(CHART_LEFT + index * step, 2), y=to_y(point.cents), point=point)
+        for index, point in enumerate(points)
+    ]
+
+    line = "M" + " L".join(f"{mark.x} {mark.y}" for mark in marks)
+    area = (
+        f"{line} L{marks[-1].x} {CHART_BOTTOM} L{marks[0].x} {CHART_BOTTOM} Z"
+    )
+
+    grid = [(to_y(value), value) for value in (high, (high + low) // 2, low)]
+
+    return BalanceChart(
+        marks=marks,
+        line=line,
+        area=area,
+        grid=grid,
+        zero_y=to_y(0) if low < 0 < high else None,
+        low_cents=low,
+        high_cents=high,
+    )

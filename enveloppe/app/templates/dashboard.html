@@ -158,6 +158,19 @@
   <div>
     <div class="card">
       <div class="card-head">
+        <h2>Solde de vos comptes</h2>
+        <span class="pill">12 mois</span>
+      </div>
+      {% if balance_chart.marks %}
+      {% with chart = balance_chart %}{% include "partials/balance_chart.html" %}{% endwith %}
+      <p class="tiny mute" style="margin-top:8px">Comptes courants et épargne, à la fin de chaque mois. Les cartes à débit différé sont exclues : leur encours est une dette à payer, pas de l'argent disponible.</p>
+      {% else %}
+      <p class="small dim">Il faut deux mois d'historique pour tracer une courbe. Importez un relevé plus ancien, ou revenez le mois prochain.</p>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <div class="card-head">
         <h2>Revenus et dépenses</h2>
         <div class="legend">
           <span><i class="dot" style="background:var(--pos)"></i> Revenus</span>

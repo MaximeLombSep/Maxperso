@@ -13,6 +13,10 @@
     <input type="hidden" name="scope" value="pending">
     <button class="btn" type="submit">⟳ Appliquer aux opérations non classées</button>
   </form>
+  <form method="post" action="{{ url_for('rules_seed') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button class="btn" type="submit" title="Ajoute les règles livrées absentes, puis classe l'historique">✦ Compléter les règles livrées</button>
+  </form>
   <button class="btn primary" type="button" data-toggle="#new-rule">+ Nouvelle règle</button>
 </div>
 

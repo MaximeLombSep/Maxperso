@@ -84,7 +84,7 @@ def dashboard(
         balances=balances,
         total_balance=sum(balances.values()),
         series=series,
-        spark=analytics.sparkline_points([point.net for point in series]),
+        balance_chart=analytics.balance_chart(analytics.balance_series(db, months=12, end=period)),
         overspent=overspent,
         biggest=biggest,
         to_review=to_review,

@@ -57,6 +57,18 @@ def shift_period(period: str, months: int) -> str:
     return f"{index // 12:04d}-{index % 12 + 1:02d}"
 
 
+MONTHS_FR_SHORT = [
+    "janv.", "févr.", "mars", "avr.", "mai", "juin",
+    "juil.", "août", "sept.", "oct.", "nov.", "déc.",
+]
+
+
+def period_short(period: str) -> str:
+    """Mois abrégé, comme on l'écrit : « avr. », jamais « avri »."""
+    _, month = parse_period(period)
+    return MONTHS_FR_SHORT[month - 1]
+
+
 def period_label(period: str) -> str:
     year, month = parse_period(period)
     return f"{MONTHS_FR[month - 1]} {year}"

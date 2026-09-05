@@ -260,6 +260,56 @@
     });
   }
 
+
+  // ----- Courbe de solde : viseur et infobulle ----------------------------
+  // Le survol sur ordinateur, le simple appui sur téléphone : la même cible
+  // sert les deux, elle est plus large que le point qu'elle représente.
+  function initChart() {
+    document.querySelectorAll("[data-chart]").forEach(function (chart) {
+      var svg = chart.querySelector("svg");
+      var crosshair = chart.querySelector("[data-crosshair]");
+      var focus = chart.querySelector("[data-focus]");
+      var tip = chart.querySelector("[data-tip]");
+      if (!svg || !crosshair || !focus || !tip) return;
+
+      function show(rect) {
+        var x = parseFloat(rect.getAttribute("data-x"));
+        var y = parseFloat(rect.getAttribute("data-y"));
+        crosshair.setAttribute("x1", x);
+        crosshair.setAttribute("x2", x);
+        crosshair.hidden = false;
+        focus.setAttribute("cx", x);
+        focus.setAttribute("cy", y);
+        focus.hidden = false;
+
+        tip.innerHTML =
+          '<span class="m">' + rect.getAttribute("data-label") + "</span> " +
+          '<span class="v">' + rect.getAttribute("data-value") + "</span>";
+        tip.hidden = false;
+        var box = svg.getBoundingClientRect();
+        var left = (x / 360) * box.width;
+        // Bornée au tracé : une infobulle qui déborde de la carte est perdue.
+        var demi = tip.offsetWidth / 2;
+        left = Math.max(demi, Math.min(left, box.width - demi));
+        tip.style.left = left + "px";
+        tip.style.top = (y / 170) * box.height - 6 + "px";
+      }
+
+      function hide() {
+        crosshair.hidden = true;
+        focus.hidden = true;
+        tip.hidden = true;
+      }
+
+      chart.querySelectorAll("[data-mark]").forEach(function (rect) {
+        rect.addEventListener("pointerenter", function () { show(rect); });
+        rect.addEventListener("pointerdown", function () { show(rect); });
+      });
+      svg.addEventListener("pointerleave", hide);
+      chart.addEventListener("pointercancel", hide);
+    });
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
     initTheme();
     initSheet();
@@ -269,6 +319,7 @@
     initToggles();
     initCover();
     initFilters();
+    initChart();
   });
 
   // ----- Rapprochement : cocher toute la liste d'un geste ------------------
