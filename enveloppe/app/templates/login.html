@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Connexion — Enveloppe</title>
+<link rel="stylesheet" href="{{ url_for('static', path='/css/app.css') }}">
+<script src="{{ url_for('static', path='/js/theme.js') }}"></script>
+</head>
+<body>
+<div class="auth-page">
+  <form class="auth-card" method="post" action="{{ url_for('login_submit') }}">
+    <div class="brand"><span class="mark">✉</span> Enveloppe</div>
+    <h1>Connexion</h1>
+    <p class="page-sub">Suivi de budget en mode enveloppe.</p>
+
+    {% if error %}<div class="alert critical" style="margin-bottom:16px"><span class="ico">⚠</span><div>{{ error }}</div></div>{% endif %}
+
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="next" value="{{ next }}">
+    <div class="grid" style="gap:13px">
+      <div class="field">
+        <label for="username">Identifiant</label>
+        <input id="username" name="username" type="text" autocomplete="username" required autofocus>
+      </div>
+      <div class="field">
+        <label for="password">Mot de passe</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+      </div>
+      <button class="btn primary block" type="submit">Entrer</button>
+    </div>
+  </form>
+</div>
+</body>
+</html>

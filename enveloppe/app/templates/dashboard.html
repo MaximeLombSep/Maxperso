@@ -1,0 +1,252 @@
+{% extends "base.html" %}
+{% block title %}Tableau de bord — Enveloppe{% endblock %}
+{% block content %}
+
+{% set peak = ((series | map(attribute='income') | list) + (series | map(attribute='expense') | list) + [1]) | max %}
+
+<div class="topbar">
+  <div>
+    <h1>Tableau de bord</h1>
+    <div class="page-sub">{{ period_label(period) }} · {{ summary.envelopes | length }} enveloppes suivies</div>
+  </div>
+  <div class="grow"></div>
+  {% with endpoint='dashboard' %}{% include "partials/month_nav.html" %}{% endwith %}
+  <a class="btn" href="{{ url_for('import_form') }}">↧ Importer un relevé</a>
+  <a class="btn primary" href="{{ url_for('budget_page').include_query_params(period=period) }}">Répartir mon budget</a>
+</div>
+
+<div class="grid g4" style="margin-bottom:16px">
+  <div class="kpi accent">
+    <span class="label">Reste à budgéter</span>
+    <span class="value num" data-to-budget>{{ summary.to_budget | money }}</span>
+    <span class="hint">{% if summary.to_budget > 0 %}À placer dans vos enveloppes{% elif summary.to_budget < 0 %}Vous avez sur-doté vos enveloppes{% else %}Tout est affecté{% endif %}</span>
+  </div>
+  <div class="kpi">
+    <span class="label">Revenus du mois</span>
+    <span class="value num pos">{{ summary.income | money }}</span>
+    <span class="hint">Hors virements internes</span>
+  </div>
+  <div class="kpi">
+    <span class="label">Dépenses du mois</span>
+    <span class="value num neg">{{ summary.expense | money }}</span>
+    <span class="hint">{{ summary.available_total | money }} encore disponible en enveloppes</span>
+  </div>
+  <div class="kpi">
+    <span class="label">Taux d'épargne</span>
+    <span class="value num {{ 'pos' if summary.net > 0 else 'neg' }}">{{ summary.savings_rate | percent }}</span>
+    <span class="hint">{{ summary.net | money }} conservé ce mois-ci</span>
+  </div>
+</div>
+
+{% if unmatched_settlements %}
+<div class="alert critical" style="margin-bottom:16px">
+  <span class="ico">⚠</span>
+  <div class="grow">
+    <strong>{{ unmatched_settlements | length }} prélèvement(s) de carte non rapproché(s).</strong>
+    Ils sont comptés comme une dépense alors que les achats qu'ils règlent le sont déjà :
+    vos dépenses du mois sont surévaluées tant que ce n'est pas corrigé.
+    <div style="margin-top:8px"><a class="btn sm" href="{{ url_for('cards_page') }}">Rapprocher</a></div>
+  </div>
+</div>
+{% endif %}
+
+{% if summary.uncategorized or insurance_alerts %}
+<div class="grid g2" style="margin-bottom:16px">
+  {% if summary.uncategorized %}
+  <div class="alert warning">
+    <span class="ico">◎</span>
+    <div class="grow">
+      <strong>{{ summary.uncategorized }} opération(s) sans enveloppe</strong> ce mois-ci.
+      Les classer améliore aussitôt les règles automatiques.
+      <div style="margin-top:8px">
+        <a class="btn sm" href="{{ url_for('transactions_page').include_query_params(period=period, envelope_id='none') }}">Les classer</a>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+  {% for status in insurance_alerts[:2] %}
+  <div class="alert {{ status.level }}">
+    <span class="ico">⏱</span>
+    <div class="grow">
+      <strong>{{ status.contract.name }}</strong> — {{ status.message }}
+      <div style="margin-top:8px">
+        <a class="btn sm" href="{{ url_for('contract_detail', contract_id=status.contract.id) }}">Ouvrir le contrat</a>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="grid g-2-1">
+  <div>
+    <div class="card">
+      <div class="card-head">
+        <h2>Revenus et dépenses</h2>
+        <div class="legend">
+          <span><i class="dot" style="background:var(--pos)"></i> Revenus</span>
+          <span><i class="dot" style="background:var(--neg)"></i> Dépenses</span>
+        </div>
+      </div>
+      <div class="bars">
+        {% for point in series %}
+        <div class="col" title="{{ period_label(point.period) }} — revenus {{ point.income | money }}, dépenses {{ point.expense | money }}">
+          <div class="stack">
+            <div class="b inc" style="height:{{ (point.income / peak * 100) | round(1) }}%"></div>
+            <div class="b exp" style="height:{{ (point.expense / peak * 100) | round(1) }}%"></div>
+          </div>
+          <div class="lbl">{{ period_label(point.period).split(' ')[0][:4] }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2>Où part l'argent ce mois-ci</h2>
+        <a class="btn sm ghost" href="{{ url_for('analytics_page').include_query_params(period=period) }}">Analyses détaillées</a>
+      </div>
+      {% if biggest %}
+      <div class="list">
+        {% for state in biggest %}
+        <div class="list-item">
+          <span class="env-chip" style="background:{{ state.envelope.color }}">{{ state.envelope.icon }}</span>
+          <div class="grow">
+            <div class="strong">{{ state.envelope.name }}</div>
+            <div class="bar {{ 'over' if state.overspent }}" style="margin-top:6px">
+              <span style="width:{{ [state.progress * 100, 100] | min | round(1) }}%"></span>
+            </div>
+          </div>
+          <div class="right">
+            <div class="num strong">{{ state.spent | money }}</div>
+            <div class="tiny {{ 'neg' if state.available < 0 else 'mute' }}">
+              {% if state.available < 0 %}dépassement de {{ (-state.available) | money }}{% else %}reste {{ state.available | money }}{% endif %}
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty"><div class="big">◔</div>Aucune dépense enregistrée sur ce mois.<br>
+        <a href="{{ url_for('import_form') }}">Importez un relevé</a> pour démarrer.</div>
+      {% endif %}
+    </div>
+
+    {% if to_review %}
+    <div class="card">
+      <div class="card-head">
+        <h2>Dernières opérations à classer</h2>
+        <a class="btn sm ghost" href="{{ url_for('transactions_page').include_query_params(envelope_id='none') }}">Tout voir</a>
+      </div>
+      <div class="list">
+        {% for tx in to_review %}
+        <div class="list-item">
+          <span class="pill">{{ tx.op_date | date_fr('%d/%m') }}</span>
+          <div class="grow truncate">{{ tx.label }}</div>
+          <span class="num strong {{ 'neg' if tx.amount_cents < 0 else 'pos' }}">{{ tx.amount_cents | money }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <div>
+    <div class="card">
+      <div class="card-head"><h2>Épargne de sécurité</h2></div>
+      <div class="value num strong" style="font-size:1.5rem">{{ security.saved_cents | money }}</div>
+      <div class="small dim">sur {{ security.target_cents | money }} visés ({{ security.months_target }} mois de dépenses essentielles)</div>
+      <div class="bar lg {{ 'done' if security.percent >= 1 else '' }}" style="margin:12px 0 8px">
+        <span style="width:{{ [security.percent * 100, 100] | min | round(1) }}%"></span>
+      </div>
+      <div class="small dim">
+        {% if security.monthly_need_cents %}
+          Couvre <strong>{{ security.months_covered | decimal_fr }}</strong> mois au rythme actuel
+          ({{ security.monthly_need_cents | money }} / mois).
+        {% else %}
+          Pas encore assez d'historique pour estimer vos dépenses essentielles.
+        {% endif %}
+      </div>
+      <a class="btn sm block" style="margin-top:12px" href="{{ url_for('savings_page') }}">Gérer l'épargne</a>
+    </div>
+
+    {% if goals %}
+    <div class="card">
+      <div class="card-head"><h2>Objectifs</h2></div>
+      <div class="list">
+        {% for item in goals %}
+        <div class="list-item" style="flex-direction:column;align-items:stretch;gap:6px">
+          <div style="display:flex;gap:10px;align-items:center">
+            <span class="dot" style="background:{{ item.goal.color }}"></span>
+            <div class="grow truncate strong">{{ item.goal.name }}</div>
+            <span class="num small">{{ item.saved_cents | money }}</span>
+          </div>
+          <div class="bar"><span style="width:{{ [item.percent * 100, 100] | min | round(1) }}%"></span></div>
+          <div class="tiny mute">
+            {% if item.goal.target_cents %}{{ item.percent | percent }} de {{ item.goal.target_cents | money }}{% endif %}
+            {% if item.months_left %} · {{ item.months_left }} mois restants{% endif %}
+            {% if item.required_monthly_cents %} · {{ item.required_monthly_cents | money }}/mois nécessaires{% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {% if card_blocks %}
+    <div class="card">
+      <div class="card-head"><h2>Encours de cartes</h2>
+        <a class="btn sm ghost" href="{{ url_for('cards_page') }}">Détail</a></div>
+      <div class="list">
+        {% for block in card_blocks %}
+        <div class="list-item">
+          <div class="grow">
+            <div class="strong">{{ block.card.name }}</div>
+            <div class="tiny mute">
+              {% if block.next_due %}prélèvement le {{ block.next_due.settlement_on | date_fr }}
+              {%- else %}rien en attente{% endif %}
+            </div>
+          </div>
+          <span class="num strong {{ 'neg' if block.outstanding < 0 }}">{{ (-block.outstanding) | money }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="card">
+      <div class="card-head"><h2>Comptes</h2><span class="num strong">{{ total_balance | money }}</span></div>
+      <div class="list">
+        {% for account in accounts %}
+        <div class="list-item">
+          <div class="grow">
+            <div class="strong">{{ account.name }}</div>
+            <div class="tiny mute">{{ account.institution or '—' }}{% if account.iban_last4 %} ••{{ account.iban_last4 }}{% endif %}</div>
+          </div>
+          <div class="right">
+            <span class="num strong {{ 'neg' if balances.get(account.id, 0) < 0 }}">{{ balances.get(account.id, 0) | money }}</span>
+            {% if projected.get(account.id, 0) != balances.get(account.id, 0) %}
+            <div class="tiny mute">{{ projected.get(account.id, 0) | money }} après encours</div>
+            {% endif %}
+          </div>
+        </div>
+        {% else %}
+        <div class="empty">Aucun compte. <a href="{{ url_for('accounts_page') }}">En créer un</a>.</div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Assurances</h2></div>
+      <div class="list-item" style="border:none;padding-top:0">
+        <div class="grow">
+          <div class="num strong" style="font-size:1.2rem">{{ insurance_totals.annual_cents | money }}</div>
+          <div class="tiny mute">par an · {{ insurance_totals.monthly_cents | money }} à provisionner chaque mois</div>
+        </div>
+        <span class="pill">{{ insurance_totals.count }} contrat(s)</span>
+      </div>
+      <a class="btn sm block" href="{{ url_for('insurance_page') }}">Voir les échéances</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+{% block title %}Opérations — Enveloppe{% endblock %}
+{% block content %}
+
+<div class="topbar">
+  <div>
+    <h1>Opérations</h1>
+    <div class="page-sub">{{ total }} opération(s) · total affiché {{ shown_total | money }}</div>
+  </div>
+  <div class="grow"></div>
+  {% with endpoint='transactions_page' %}{% include "partials/month_nav.html" %}{% endwith %}
+  <button class="btn m-only" type="button" data-mtoggle="#filters">⌕ Filtrer</button>
+  <form method="post" action="{{ url_for('recategorize') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button class="btn" type="submit" title="Applique les règles aux opérations sans enveloppe">⟳ Recatégoriser</button>
+  </form>
+  <form method="post" action="{{ url_for('detect_transfers_route') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button class="btn" type="submit" title="Apparie les virements entre vos propres comptes">⇄ Virements internes</button>
+  </form>
+</div>
+
+<form id="filters" class="card m-collapse" method="get" action="{{ url_for('transactions_page') }}" style="margin-bottom:16px">
+  <input type="hidden" name="period" value="{{ period }}">
+  <div class="form-grid cols-6">
+    <div class="field">
+      <label for="q">Recherche</label>
+      <input id="q" name="q" type="search" value="{{ filters.q }}" placeholder="Libellé, note…">
+    </div>
+    <div class="field">
+      <label for="account_id">Compte</label>
+      <select id="account_id" name="account_id" data-autosubmit>
+        <option value="">Tous</option>
+        {% for account in accounts %}
+        <option value="{{ account.id }}" {{ 'selected' if filters.account_id == account.id|string }}>{{ account.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="envelope_id">Enveloppe</label>
+      <select id="envelope_id" name="envelope_id" data-autosubmit>
+        <option value="">Toutes</option>
+        <option value="none" {{ 'selected' if filters.envelope_id == 'none' }}>⚠ Sans enveloppe</option>
+        {% for envelope in envelopes %}
+        <option value="{{ envelope.id }}" {{ 'selected' if filters.envelope_id == envelope.id|string }}>{{ envelope.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="kind">Type</label>
+      <select id="kind" name="kind" data-autosubmit>
+        <option value="">Tous</option>
+        <option value="expense" {{ 'selected' if filters.kind == 'expense' }}>Dépenses</option>
+        <option value="income" {{ 'selected' if filters.kind == 'income' }}>Revenus</option>
+        <option value="transfer" {{ 'selected' if filters.kind == 'transfer' }}>Virements internes</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="date_from">Du</label>
+      <input id="date_from" name="date_from" type="date" value="{{ filters.date_from }}">
+    </div>
+    <div class="field">
+      <label for="date_to">Au</label>
+      <input id="date_to" name="date_to" type="date" value="{{ filters.date_to }}">
+    </div>
+  </div>
+  <div class="form-actions">
+    <a class="btn ghost" href="{{ url_for('transactions_page') }}">Réinitialiser</a>
+    <button class="btn primary" type="submit">Filtrer</button>
+  </div>
+</form>
+
+<form method="post" action="{{ url_for('bulk_assign') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+  <div class="card">
+    <div class="card-head">
+      <h2>{{ period_label(period) }}</h2>
+      <div class="hidden" data-bulk-bar style="display:flex;gap:8px;align-items:center">
+        <span class="pill accent"><span data-bulk-count>0</span> sélectionnée(s)</span>
+        <select name="envelope_id" aria-label="Enveloppe cible">
+          <option value="none">Retirer l'enveloppe</option>
+          {% for envelope in envelopes %}
+          <option value="{{ envelope.id }}">{{ envelope.name }}</option>
+          {% endfor %}
+        </select>
+        <label class="check"><input type="checkbox" name="learn" value="1"> Créer les règles</label>
+        <button class="btn primary sm" type="submit">Appliquer</button>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table class="tx-table">
+        <thead>
+          <tr>
+            <th style="width:26px"><input type="checkbox" data-check-all aria-label="Tout sélectionner"></th>
+            <th style="width:86px">Date</th>
+            <th>Libellé</th>
+            <th style="width:130px">Compte</th>
+            <th style="width:210px">Enveloppe</th>
+            <th class="amount" style="width:120px">Montant</th>
+            <th style="width:44px"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for tx in rows %}
+          <tr class="tx-row">
+            <td class="tx-check"><input type="checkbox" name="selected" value="{{ tx.id }}" data-row-check aria-label="Sélectionner"></td>
+            <td class="tx-date nowrap small">{{ tx.op_date | date_fr('%d/%m/%y') }}</td>
+            <td class="tx-label">
+              <div class="truncate" style="max-width:420px">{{ tx.label }}</div>
+              {% if tx.notes %}<div class="tiny mute truncate" style="max-width:420px">✎ {{ tx.notes }}</div>{% endif %}
+              {% if tx.kind == 'transfer' %}<span class="pill">virement interne</span>{% endif %}
+            </td>
+            <td class="tx-account small dim truncate">{{ tx.account.name if tx.account }}</td>
+            <td class="tx-env">
+              <select data-assign data-transaction="{{ tx.id }}" aria-label="Enveloppe de l'opération">
+                <option value="none" {{ 'selected' if not tx.envelope_id }}>— à classer —</option>
+                {% for envelope in envelopes %}
+                <option value="{{ envelope.id }}" {{ 'selected' if tx.envelope_id == envelope.id }}>{{ envelope.name }}</option>
+                {% endfor %}
+              </select>
+            </td>
+            <td class="tx-amount amount num strong {{ 'neg' if tx.amount_cents < 0 else 'pos' }}">{{ tx.amount_cents | money }}</td>
+            <td class="tx-more">
+              <button class="btn ghost sm" type="button" data-toggle="#tx-{{ tx.id }}" title="Notes et type">⋯</button>
+            </td>
+          </tr>
+          <tr id="tx-{{ tx.id }}" class="hidden">
+            <td colspan="7" style="background:var(--surface-2)">
+              <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+                <div class="field" style="flex:1;min-width:240px">
+                  <label>Note</label>
+                  <input form="notes-{{ tx.id }}" name="notes" type="text" value="{{ tx.notes }}" placeholder="Contexte, justificatif, remboursement attendu…">
+                </div>
+                <div class="field" style="width:190px">
+                  <label>Type d'opération</label>
+                  <select form="notes-{{ tx.id }}" name="kind">
+                    <option value="expense" {{ 'selected' if tx.kind == 'expense' }}>Dépense</option>
+                    <option value="income" {{ 'selected' if tx.kind == 'income' }}>Revenu</option>
+                    <option value="transfer" {{ 'selected' if tx.kind == 'transfer' }}>Virement interne</option>
+                  </select>
+                </div>
+                <button class="btn primary" form="notes-{{ tx.id }}" type="submit">Enregistrer</button>
+                <div class="tiny mute" style="flex-basis:100%">Libellé brut : {{ tx.raw_label }}</div>
+              </div>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7"><div class="empty"><div class="big">≡</div>Aucune opération sur ce filtre.</div></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if pages > 1 %}
+    <div style="display:flex;gap:8px;justify-content:center;margin-top:16px;align-items:center">
+      {% if page > 1 %}<a class="btn sm" href="{{ url_for('transactions_page').include_query_params(period=period, page=page-1, q=filters.q, account_id=filters.account_id, envelope_id=filters.envelope_id, kind=filters.kind) }}">‹ Précédent</a>{% endif %}
+      <span class="small dim">Page {{ page }} / {{ pages }}</span>
+      {% if page < pages %}<a class="btn sm" href="{{ url_for('transactions_page').include_query_params(period=period, page=page+1, q=filters.q, account_id=filters.account_id, envelope_id=filters.envelope_id, kind=filters.kind) }}">Suivant ›</a>{% endif %}
+    </div>
+    {% endif %}
+  </div>
+</form>
+
+{% for tx in rows %}
+<form id="notes-{{ tx.id }}" method="post" action="{{ url_for('transaction_notes', transaction_id=tx.id) }}" class="hidden">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+</form>
+{% endfor %}
+{% endblock %}

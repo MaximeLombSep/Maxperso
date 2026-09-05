@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+{% block title %}Épargne — Enveloppe{% endblock %}
+{% block content %}
+
+<div class="topbar">
+  <div>
+    <h1>Épargne</h1>
+    <div class="page-sub">Fonds de sécurité d'abord, projets ensuite : c'est l'ordre qui protège le budget.</div>
+  </div>
+  <div class="grow"></div>
+  <button class="btn primary" type="button" data-toggle="#new-goal">+ Nouvel objectif</button>
+</div>
+
+<div class="card" style="margin-bottom:16px">
+  <div class="card-head">
+    <h2>Épargne de sécurité</h2>
+    <span class="pill {{ 'pos' if security.percent >= 1 else 'warn' }}">{{ security.percent | percent }} de la cible</span>
+  </div>
+  <div class="grid g-2-1">
+    <div>
+      <div style="display:flex;align-items:baseline;gap:10px">
+        <span class="num strong" style="font-size:2rem">{{ security.saved_cents | money }}</span>
+        <span class="dim">sur {{ security.target_cents | money }}</span>
+      </div>
+      <div class="bar lg {{ 'done' if security.percent >= 1 }}" style="margin:14px 0 10px">
+        <span style="width:{{ [security.percent * 100, 100] | min | round(1) }}%"></span>
+      </div>
+      <p class="small dim">
+        Votre dépense essentielle moyenne est de <strong>{{ security.monthly_need_cents | money }}</strong> par mois.
+        L'épargne actuelle couvre <strong>{{ security.months_covered | decimal_fr }}</strong> mois sans revenu.
+        {% if not security.goal %}
+        <br>Aucun objectif dédié n'existe : le montant affiché est le solde de vos comptes d'épargne.
+        Créez un objectif de type « Épargne de sécurité » pour le suivre précisément.
+        {% endif %}
+      </p>
+    </div>
+    <form method="post" action="{{ url_for('security_settings') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="field">
+        <label for="months">Cible, en mois de dépenses essentielles</label>
+        <input id="months" name="months" type="number" min="1" max="24" value="{{ security.months_target }}">
+        <span class="tiny mute">Repère courant : 3 à 6 mois. Davantage si vos revenus sont irréguliers.</span>
+      </div>
+      <div class="form-actions"><button class="btn" type="submit">Mettre à jour</button></div>
+      <p class="tiny mute">Le calcul s'appuie sur vos enveloppes marquées « essentielles » dans l'écran Enveloppes.</p>
+    </form>
+  </div>
+</div>
+
+<form id="new-goal" class="card hidden" method="post" action="{{ url_for('goal_create') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <div class="card-head"><h2>Nouvel objectif</h2></div>
+  <div class="form-grid">
+    <div class="field"><label for="g-name">Nom</label><input id="g-name" name="name" type="text" required placeholder="Apport résidence, voiture, voyage…"></div>
+    <div class="field"><label for="g-kind">Type</label>
+      <select id="g-kind" name="kind">{% for key, label in kinds.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></div>
+    <div class="field"><label for="g-target">Montant cible</label><input id="g-target" name="target" type="text" inputmode="decimal" placeholder="0,00"></div>
+    <div class="field"><label for="g-date">Échéance souhaitée</label><input id="g-date" name="target_date" type="date"></div>
+    <div class="field"><label for="g-monthly">Versement mensuel prévu</label><input id="g-monthly" name="monthly_plan" type="text" inputmode="decimal" placeholder="0,00"></div>
+    <div class="field"><label for="g-account">Compte support</label>
+      <select id="g-account" name="account_id"><option value="">Aucun</option>
+        {% for account in accounts %}<option value="{{ account.id }}">{{ account.name }}</option>{% endfor %}</select></div>
+    <div class="field"><label for="g-priority">Priorité (1 = prioritaire)</label><input id="g-priority" name="priority" type="number" value="100"></div>
+    <div class="field"><label for="g-color">Couleur</label><input id="g-color" name="color" type="color" value="#0ea5e9"></div>
+    <div class="field full"><label for="g-notes">Notes</label><textarea id="g-notes" name="notes"></textarea></div>
+  </div>
+  <div class="form-actions"><button class="btn primary" type="submit">Créer l'objectif</button></div>
+</form>
+
+<div class="grid g-2-1">
+  <div>
+    {% for item in progress %}
+    <div class="card">
+      <div class="card-head">
+        <span class="env-chip" style="background:{{ item.goal.color }}">◆</span>
+        <h2 style="flex:1">{{ item.goal.name }}</h2>
+        <span class="pill {{ 'pos' if item.on_track else 'warn' }}">{{ 'dans les temps' if item.on_track else 'rythme insuffisant' }}</span>
+        <button class="btn ghost sm" type="button" data-toggle="#goal-{{ item.goal.id }}">Modifier</button>
+      </div>
+
+      <div style="display:flex;align-items:baseline;gap:10px">
+        <span class="num strong" style="font-size:1.5rem">{{ item.saved_cents | money }}</span>
+        {% if item.goal.target_cents %}<span class="dim">sur {{ item.goal.target_cents | money }}</span>{% endif %}
+        <span class="grow"></span>
+        <span class="pill">{{ item.label }}</span>
+      </div>
+      <div class="bar lg {{ 'done' if item.percent >= 1 }}" style="margin:12px 0 10px">
+        <span style="width:{{ [item.percent * 100, 100] | min | round(1) }}%"></span>
+      </div>
+
+      <div class="grid g4" style="gap:10px">
+        <div><div class="tiny mute">RESTE À ÉPARGNER</div><div class="num strong">{{ item.remaining_cents | money }}</div></div>
+        <div><div class="tiny mute">NÉCESSAIRE / MOIS</div><div class="num strong">{{ item.required_monthly_cents | money }}</div></div>
+        <div><div class="tiny mute">RYTHME CONSTATÉ</div><div class="num strong">{{ item.pace_monthly_cents | money }}</div></div>
+        <div><div class="tiny mute">ATTEINT VERS</div><div class="num strong">{{ item.projected_date | date_fr('%m/%Y') }}</div></div>
+      </div>
+
+      <form method="post" action="{{ url_for('contribution_add', goal_id=item.goal.id) }}" style="margin-top:14px">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap">
+          <div class="field" style="width:150px"><label>Versement</label><input name="amount" type="text" inputmode="decimal" placeholder="0,00" required></div>
+          <div class="field" style="width:160px"><label>Date</label><input name="op_date" type="date" value="{{ today().isoformat() }}"></div>
+          <div class="field" style="flex:1;min-width:160px"><label>Note</label><input name="note" type="text" placeholder="Virement mensuel"></div>
+          <button class="btn" type="submit">Ajouter</button>
+        </div>
+      </form>
+
+      <div id="goal-{{ item.goal.id }}" class="hidden" style="margin-top:14px;border-top:1px solid var(--border);padding-top:14px">
+        <form method="post" action="{{ url_for('goal_update', goal_id=item.goal.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <div class="form-grid">
+            <div class="field"><label>Nom</label><input name="name" type="text" value="{{ item.goal.name }}" required></div>
+            <div class="field"><label>Type</label>
+              <select name="kind">{% for key, label in kinds.items() %}<option value="{{ key }}" {{ 'selected' if item.goal.kind == key }}>{{ label }}</option>{% endfor %}</select></div>
+            <div class="field"><label>Montant cible</label><input name="target" type="text" inputmode="decimal" value="{{ item.goal.target_cents | money(False) }}"></div>
+            <div class="field"><label>Échéance</label><input name="target_date" type="date" value="{{ item.goal.target_date.isoformat() if item.goal.target_date else '' }}"></div>
+            <div class="field"><label>Versement mensuel prévu</label><input name="monthly_plan" type="text" inputmode="decimal" value="{{ item.goal.monthly_plan_cents | money(False) }}"></div>
+            <div class="field"><label>Compte support</label>
+              <select name="account_id"><option value="">Aucun</option>
+                {% for account in accounts %}<option value="{{ account.id }}" {{ 'selected' if item.goal.account_id == account.id }}>{{ account.name }}</option>{% endfor %}</select></div>
+            <div class="field"><label>Priorité</label><input name="priority" type="number" value="{{ item.goal.priority }}"></div>
+            <div class="field"><label>Couleur</label><input name="color" type="color" value="{{ item.goal.color }}"></div>
+            <div class="field" style="justify-content:flex-end"><label class="check"><input type="checkbox" name="archived" {{ 'checked' if item.goal.archived }}> Archiver</label></div>
+            <div class="field full"><label>Notes</label><textarea name="notes">{{ item.goal.notes }}</textarea></div>
+          </div>
+          <div class="form-actions"><button class="btn primary" type="submit">Enregistrer</button></div>
+        </form>
+      </div>
+    </div>
+    {% else %}
+    <div class="card"><div class="empty"><div class="big">◆</div>Aucun objectif d'épargne.<br>
+      Commencez par un fonds de sécurité, puis ajoutez vos projets.</div></div>
+    {% endfor %}
+  </div>
+
+  <div>
+    <div class="card">
+      <div class="card-head"><h2>Vue d'ensemble</h2></div>
+      <div class="list">
+        <div class="list-item"><div class="grow small">Total épargné</div><span class="num strong">{{ total_saved | money }}</span></div>
+        <div class="list-item"><div class="grow small">Total visé</div><span class="num strong">{{ total_target | money }}</span></div>
+        <div class="list-item"><div class="grow small">Objectifs suivis</div><span class="num strong">{{ progress | length }}</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Derniers versements</h2></div>
+      <div class="list">
+        {% for contribution in recent %}
+        <div class="list-item">
+          <span class="pill">{{ contribution.op_date | date_fr('%d/%m') }}</span>
+          <div class="grow truncate">
+            {{ contribution.goal.name }}
+            {% if contribution.note %}<div class="tiny mute truncate">{{ contribution.note }}</div>{% endif %}
+          </div>
+          <span class="num strong pos">{{ contribution.amount_cents | money }}</span>
+          <form method="post" action="{{ url_for('contribution_delete', contribution_id=contribution.id) }}" data-confirm="Supprimer ce versement ?">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="btn ghost sm" type="submit">✕</button>
+          </form>
+        </div>
+        {% else %}
+        <div class="empty">Aucun versement enregistré.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

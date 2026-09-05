@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}Comptes — Enveloppe{% endblock %}
+{% block content %}
+
+<div class="topbar">
+  <div>
+    <h1>Comptes</h1>
+    <div class="page-sub">Solde = solde d'ouverture saisi + toutes les opérations importées.</div>
+  </div>
+  <div class="grow"></div>
+  <span class="kpi" style="padding:8px 16px"><span class="label">Total</span><span class="value num" style="font-size:1.15rem">{{ total | money }}</span></span>
+  {% if outstanding %}<a class="btn" href="{{ url_for('cards_page') }}">▤ Encours de cartes</a>{% endif %}
+  <button class="btn primary" type="button" data-toggle="#new-account">+ Nouveau compte</button>
+</div>
+
+<form id="new-account" class="card hidden" method="post" action="{{ url_for('account_create') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <div class="card-head"><h2>Nouveau compte</h2></div>
+  <div class="form-grid">
+    <div class="field"><label for="a-name">Nom</label><input id="a-name" name="name" type="text" required placeholder="Compte joint"></div>
+    <div class="field"><label for="a-kind">Type</label>
+      <select id="a-kind" name="kind">{% for key, label in kinds.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></div>
+    <div class="field"><label for="a-institution">Établissement</label><input id="a-institution" name="institution" type="text"></div>
+    <div class="field"><label for="a-iban">4 derniers chiffres</label><input id="a-iban" name="iban_last4" type="text" maxlength="4" inputmode="numeric" placeholder="1234">
+      <span class="tiny mute">Repère visuel uniquement. Ne saisissez jamais l'IBAN complet ni vos identifiants bancaires.</span></div>
+    <div class="field"><label for="a-opening">Solde d'ouverture</label><input id="a-opening" name="opening_balance" type="text" inputmode="decimal" placeholder="0,00"></div>
+    <div class="field" style="justify-content:flex-end"><label class="check"><input type="checkbox" name="is_budgeted" checked> Compte inclus dans le budget</label></div>
+    <div class="field"><label for="a-settlement">Carte différée — compte débité</label>
+      <select id="a-settlement" name="settlement_account_id">
+        <option value="">— sans objet —</option>
+        {% for account in accounts %}{% if account.kind != 'credit' %}<option value="{{ account.id }}">{{ account.name }}</option>{% endif %}{% endfor %}
+      </select>
+      <span class="tiny mute">À renseigner uniquement pour une carte à débit différé.</span></div>
+    <div class="field"><label for="a-cutoff">Jour d'arrêté</label>
+      <input id="a-cutoff" name="cutoff_day" type="number" min="0" max="31" value="0">
+      <span class="tiny mute">0 = dernier jour du mois.</span></div>
+    <div class="field"><label for="a-settleday">Jour de prélèvement</label>
+      <input id="a-settleday" name="settlement_day" type="number" min="0" max="31" value="0">
+      <span class="tiny mute">0 = dernier jour. S'il précède l'arrêté, le prélèvement tombe le mois suivant.</span></div>
+  </div>
+  <div class="form-actions"><button class="btn primary" type="submit">Créer</button></div>
+</form>
+
+<div class="card">
+  <div class="card-head"><h2>{{ accounts | length }} compte(s)</h2></div>
+  <div class="table-wrap">
+    <table class="stack">
+      <thead><tr><th>Compte</th><th>Type</th><th>Établissement</th><th class="amount">Opérations</th><th class="amount">Solde</th><th class="amount">Après encours</th><th></th></tr></thead>
+      <tbody>
+        {% for account in accounts %}
+        <tr>
+          <td data-label=""><span class="strong">{{ account.name }}</span>
+            {% if account.iban_last4 %}<span class="tiny mute"> ••{{ account.iban_last4 }}</span>{% endif %}
+            {% if account.archived %}<span class="pill">archivé</span>{% endif %}
+            {% if not account.is_budgeted %}<span class="pill">hors budget</span>{% endif %}</td>
+          <td class="small dim" data-label="Type">{{ kinds.get(account.kind, account.kind) }}</td>
+          <td class="small dim" data-label="Établissement">{{ account.institution or '—' }}</td>
+          <td class="amount num dim" data-label="Opérations">{{ counts.get(account.id, 0) }}</td>
+          <td class="amount num strong {{ 'neg' if balances.get(account.id, 0) < 0 }}" data-label="Solde">{{ balances.get(account.id, 0) | money }}
+            {% if account.kind == 'credit' %}<span class="tiny mute">encours</span>{% endif %}</td>
+          <td class="amount num {{ 'neg' if projected.get(account.id, 0) < 0 }}" data-label="Après encours">
+            {% if projected.get(account.id, 0) != balances.get(account.id, 0) %}{{ projected.get(account.id, 0) | money }}{% else %}<span class="mute">—</span>{% endif %}</td>
+          <td data-label=""><button class="btn ghost sm" type="button" data-toggle="#acc-{{ account.id }}">Modifier</button></td>
+        </tr>
+        <tr id="acc-{{ account.id }}" class="hidden">
+          <td colspan="7" style="background:var(--surface-2)">
+            <form method="post" action="{{ url_for('account_update', account_id=account.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <div class="form-grid">
+                <div class="field"><label>Nom</label><input name="name" type="text" value="{{ account.name }}" required></div>
+                <div class="field"><label>Type</label>
+                  <select name="kind">{% for key, label in kinds.items() %}<option value="{{ key }}" {{ 'selected' if account.kind == key }}>{{ label }}</option>{% endfor %}</select></div>
+                <div class="field"><label>Établissement</label><input name="institution" type="text" value="{{ account.institution }}"></div>
+                <div class="field"><label>4 derniers chiffres</label><input name="iban_last4" type="text" maxlength="4" value="{{ account.iban_last4 }}"></div>
+                <div class="field"><label>Solde d'ouverture</label><input name="opening_balance" type="text" inputmode="decimal" value="{{ account.opening_balance_cents | money(False) }}"></div>
+                <div class="field" style="justify-content:flex-end;gap:8px">
+                  <label class="check"><input type="checkbox" name="is_budgeted" {{ 'checked' if account.is_budgeted }}> Inclus dans le budget</label>
+                  <label class="check"><input type="checkbox" name="archived" {{ 'checked' if account.archived }}> Archiver</label>
+                </div>
+                <div class="field"><label>Carte différée — compte débité</label>
+                  <select name="settlement_account_id">
+                    <option value="">— sans objet —</option>
+                    {% for other in accounts %}{% if other.kind != 'credit' %}
+                    <option value="{{ other.id }}" {{ 'selected' if account.settlement_account_id == other.id }}>{{ other.name }}</option>
+                    {% endif %}{% endfor %}
+                  </select></div>
+                <div class="field"><label>Jour d'arrêté (0 = fin de mois)</label>
+                  <input name="cutoff_day" type="number" min="0" max="31" value="{{ account.cutoff_day }}"></div>
+                <div class="field"><label>Jour de prélèvement (0 = fin de mois)</label>
+                  <input name="settlement_day" type="number" min="0" max="31" value="{{ account.settlement_day }}"></div>
+              </div>
+              <div class="form-actions"><button class="btn primary" type="submit">Enregistrer</button></div>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7"><div class="empty">Aucun compte.</div></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

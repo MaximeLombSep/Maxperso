@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Réglages — Enveloppe{% endblock %}
+{% block content %}
+
+<div class="topbar">
+  <div>
+    <h1>Réglages</h1>
+    <div class="page-sub">Accès, données et maintenance.</div>
+  </div>
+</div>
+
+{% if schema_gaps %}
+<div class="alert critical" style="margin-bottom:16px">
+  <span class="ico">⚠</span>
+  <div class="grow">
+    <strong>Le schéma de la base n'est pas à jour</strong> — colonnes manquantes :
+    {% for table, columns in schema_gaps.items() %}<code>{{ table }}</code> ({{ columns | join(', ') }}){% if not loop.last %}, {% endif %}{% endfor %}.
+    <div class="small" style="margin-top:6px">
+      Aucune modification n'est appliquée automatiquement. Arrêtez l'application,
+      sauvegardez le dossier de données, puis exécutez le script de migration
+      correspondant dans <code>docs/migrations/</code>.
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<div class="grid g2">
+  <form class="card" method="post" action="{{ url_for('change_password') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="card-head"><h2>Mot de passe</h2></div>
+    <div class="grid" style="gap:12px">
+      <div class="field"><label for="p-current">Mot de passe actuel</label>
+        <input id="p-current" name="current" type="password" autocomplete="current-password" required></div>
+      <div class="field"><label for="p-new">Nouveau mot de passe (12 caractères minimum)</label>
+        <input id="p-new" name="new_password" type="password" autocomplete="new-password" minlength="12" required></div>
+      <div class="field"><label for="p-confirm">Confirmation</label>
+        <input id="p-confirm" name="confirm" type="password" autocomplete="new-password" minlength="12" required></div>
+    </div>
+    <div class="form-actions"><button class="btn primary" type="submit">Modifier</button></div>
+    <p class="tiny mute">Le mot de passe est conservé sous forme de condensat scrypt salé. Il n'apparaît jamais en clair, ni en base, ni dans les journaux.</p>
+  </form>
+
+  <div class="card">
+    <div class="card-head"><h2>Vos données</h2></div>
+    <div class="list">
+      <div class="list-item"><div class="grow small">Utilisateur</div><span class="strong">{{ user.username if user }}</span></div>
+      <div class="list-item"><div class="grow small">Dernière connexion</div><span class="small">{{ user.last_login | date_fr('%d/%m/%Y %H:%M') if user and user.last_login else '—' }}</span></div>
+      <div class="list-item"><div class="grow small">Opérations enregistrées</div><span class="num strong">{{ counts.transactions }}</span></div>
+      <div class="list-item"><div class="grow small">Comptes</div><span class="num strong">{{ counts.accounts }}</span></div>
+      <div class="list-item"><div class="grow small">Dossier de données</div><span class="tiny mute truncate">{{ data_dir }}</span></div>
+      <div class="list-item"><div class="grow small">Taille maximale des pièces jointes</div><span class="small">{{ max_upload_mb }} Mo</span></div>
+      <div class="list-item"><div class="grow small">Cible du fonds de sécurité</div><span class="small">{{ security_months }} mois</span></div>
+    </div>
+    <a class="btn block" style="margin-top:12px" href="{{ url_for('export_transactions') }}">↧ Exporter toutes les opérations (CSV)</a>
+    <p class="tiny mute" style="margin-top:8px">Sauvegarde : copiez le dossier de données ci-dessus. Il contient la base SQLite et les pièces jointes des contrats.</p>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head"><h2>Historique des imports</h2></div>
+  <p class="small dim">Annuler un import supprime uniquement les opérations qu'il a créées. Les affectations manuelles faites sur ces opérations seront perdues.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Fichier</th><th>Compte</th><th>Date</th><th class="amount">Ajoutées</th><th class="amount">Doublons</th><th></th></tr></thead>
+      <tbody>
+        {% for batch in batches %}
+        <tr>
+          <td class="truncate strong">{{ batch.filename }}</td>
+          <td class="small dim">{{ batch.account.name if batch.account }}</td>
+          <td class="small dim nowrap">{{ batch.imported_at | date_fr('%d/%m/%Y %H:%M') }}</td>
+          <td class="amount num pos">{{ batch.inserted }}</td>
+          <td class="amount num dim">{{ batch.duplicates }}</td>
+          <td>
+            <form method="post" action="{{ url_for('batch_rollback', batch_id=batch.id) }}"
+                  data-confirm="Supprimer les {{ batch.inserted }} opération(s) de cet import ?"
+                  style="display:flex;gap:6px">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input name="confirm" type="text" placeholder="SUPPRIMER" style="width:120px" aria-label="Confirmation">
+              <button class="btn danger sm" type="submit">Annuler l'import</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6"><div class="empty">Aucun import.</div></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<details class="disclose card" style="margin-top:16px">
+  <summary>Accès à distance et sécurité</summary>
+  <div class="small dim">
+    <p>Cette application contient l'intégralité de vos opérations bancaires et de vos contrats. Elle n'est pas conçue pour être exposée directement sur Internet.</p>
+    <p><strong>Recommandé</strong> : un réseau privé (Tailscale ou WireGuard). Vos appareils rejoignent le réseau, l'application reste invisible depuis l'extérieur, aucun port n'est ouvert sur votre box.</p>
+    <p><strong>Acceptable</strong> : un tunnel (Cloudflare Tunnel) avec authentification devant l'application.</p>
+    <p><strong>À éviter</strong> : une redirection de port sur la box vers l'application. Si vous y tenez malgré tout, placez impérativement un reverse proxy en HTTPS devant, et gardez tout à jour.</p>
+  </div>
+</details>
+{% endblock %}

@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}Analyses — Enveloppe{% endblock %}
+{% block content %}
+
+<div class="topbar">
+  <div>
+    <h1>Analyses</h1>
+    <div class="page-sub">{{ months }} mois d'historique · les chiffres viennent de vos opérations, pas d'estimations.</div>
+  </div>
+  <div class="grow"></div>
+  {% with endpoint='analytics_page' %}{% include "partials/month_nav.html" %}{% endwith %}
+</div>
+
+<div class="grid g4" style="margin-bottom:16px">
+  <div class="kpi"><span class="label">Revenus moyens</span><span class="value num pos">{{ average_income | money }}</span><span class="hint">sur {{ months }} mois</span></div>
+  <div class="kpi"><span class="label">Dépenses moyennes</span><span class="value num neg">{{ average_expense | money }}</span><span class="hint">tous comptes budgétés</span></div>
+  <div class="kpi"><span class="label">Épargne moyenne</span><span class="value num {{ 'pos' if average_net > 0 else 'neg' }}">{{ average_net | money }}</span><span class="hint">par mois</span></div>
+  <div class="kpi accent"><span class="label">Économies repérées</span><span class="value num">{{ report.yearly_total | money }}</span><span class="hint">potentiel annuel, à arbitrer</span></div>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h2>Revenus et dépenses mois par mois</h2>
+    <div class="legend">
+      <span><i class="dot" style="background:var(--pos)"></i> Revenus</span>
+      <span><i class="dot" style="background:var(--neg)"></i> Dépenses</span>
+    </div>
+  </div>
+  <div class="bars" style="height:210px">
+    {% for point in series %}
+    <div class="col" title="{{ period_label(point.period) }} — {{ point.income | money }} / {{ point.expense | money }}">
+      <div class="stack">
+        <div class="b inc" style="height:{{ (point.income / max_value * 100) | round(1) }}%"></div>
+        <div class="b exp" style="height:{{ (point.expense / max_value * 100) | round(1) }}%"></div>
+      </div>
+      <div class="lbl">{{ point.period[5:] }}/{{ point.period[2:4] }}</div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="grid g2">
+  <div class="card">
+    <div class="card-head"><h2>Répartition de {{ period_label(period) }}</h2></div>
+    {% if breakdown %}
+    {% set ns = namespace(offset=0) %}
+    <div class="donut-wrap">
+      <svg class="donut" width="180" height="180" viewBox="0 0 180 180" role="img" aria-label="Répartition des dépenses">
+        <circle cx="90" cy="90" r="60" fill="none" stroke="var(--surface-3)" stroke-width="26"></circle>
+        {% for item in breakdown %}
+        {% set dash = (item.share * 377) | round(2) %}
+        <circle cx="90" cy="90" r="60" fill="none"
+                stroke="{{ item.envelope.color if item.envelope else '#94a3b8' }}"
+                stroke-width="26"
+                stroke-dasharray="{{ dash }} {{ (377 - dash) | round(2) }}"
+                stroke-dashoffset="{{ (-ns.offset) | round(2) }}"
+                transform="rotate(-90 90 90)"></circle>
+        {% set ns.offset = ns.offset + dash %}
+        {% endfor %}
+        <text x="90" y="86" text-anchor="middle" font-size="13" fill="var(--text-mute)">Dépenses</text>
+        <text x="90" y="106" text-anchor="middle" font-size="16" font-weight="700" fill="var(--text)">{{ summary.expense | money_short }}</text>
+      </svg>
+      <div class="donut-legend">
+        {% for item in breakdown %}
+        <div class="row">
+          <span class="dot" style="background:{{ item.envelope.color if item.envelope else '#94a3b8' }}"></span>
+          <span class="grow truncate">{{ item.envelope.name if item.envelope else 'Sans enveloppe' }}</span>
+          <span class="num">{{ item.spent_cents | money }}</span>
+          <span class="tiny mute" style="width:42px;text-align:right">{{ item.share | percent }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% else %}
+    <div class="empty">Aucune dépense sur ce mois.</div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>Principaux postes de dépense</h2></div>
+    <div class="table-wrap">
+      <table class="stack">
+        <thead><tr><th>Commerçant</th><th class="amount">Total</th><th class="amount">Opérations</th></tr></thead>
+        <tbody>
+          {% for name, total, count in merchants %}
+          <tr>
+            <td class="truncate" data-label="">{{ name | title }}</td>
+            <td class="amount num strong" data-label="Total">{{ total | money }}</td>
+            <td class="amount num dim" data-label="Opérations">{{ count }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="3"><div class="empty">Rien à afficher.</div></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h2>Pistes d'économies</h2>
+    <span class="pill accent">{{ report.monthly_total | money }} / mois</span>
+  </div>
+  {% if report.opportunities %}
+  <div class="grid g2">
+    {% for item in report.opportunities %}
+    <div class="alert {{ 'warning' if item.severity == 'warning' else 'info' }}">
+      <span class="ico">{{ '⚠' if item.severity == 'warning' else '◈' }}</span>
+      <div class="grow">
+        <strong>{{ item.title }}</strong>
+        <div class="small" style="margin-top:4px">{{ item.detail }}</div>
+        <div class="num strong" style="margin-top:8px">{{ item.yearly_cents | money }} par an · {{ item.monthly_cents | money }} par mois</div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  <p class="tiny mute" style="margin-top:12px">Ces montants sont un potentiel, pas une économie acquise : ils supposent que vous supprimez ou renégociez la dépense concernée.</p>
+  {% else %}
+  <div class="empty">Pas encore assez d'historique pour repérer des économies. Importez plusieurs mois d'opérations.</div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h2>Prélèvements récurrents détectés</h2>
+    <span class="pill">{{ recurring | length }}</span>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th>Commerçant</th><th class="amount">Montant moyen</th><th class="amount">Par an</th>
+        <th class="amount">Mois concernés</th><th>Dernier passage</th>
+      </tr></thead>
+      <tbody>
+        {% for item in recurring %}
+        <tr>
+          <td class="strong" data-label="">{{ item.merchant | title }}
+            {% if item.essential %}<span class="pill">essentiel</span>{% endif %}</td>
+          <td class="amount num" data-label="Montant moyen">{{ item.average_cents | money }}</td>
+          <td class="amount num strong" data-label="Par an">{{ item.annual_cents | money }}</td>
+          <td class="amount num dim" data-label="Mois concernés">{{ item.months }}</td>
+          <td class="small dim" data-label="Dernier passage">{{ item.last_seen | date_fr }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5"><div class="empty">Aucun prélèvement régulier identifié sur les 6 derniers mois.</div></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

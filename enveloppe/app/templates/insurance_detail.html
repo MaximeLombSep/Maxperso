@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% block title %}{{ contract.name }} — Enveloppe{% endblock %}
+{% block content %}
+
+<div class="topbar">
+  <div>
+    <h1>{{ contract.name }}</h1>
+    <div class="page-sub">{{ categories[contract.category] }}{% if contract.insurer %} · {{ contract.insurer }}{% endif %}</div>
+  </div>
+  <div class="grow"></div>
+  <a class="btn ghost" href="{{ url_for('insurance_page') }}">← Tous les contrats</a>
+</div>
+
+<div class="grid g-2-1">
+  <div>
+    <div class="alert {{ status.level if status.level != 'ok' else 'info' }}">
+      <span class="ico">⏱</span>
+      <div class="grow">
+        <strong>{{ status.message }}</strong>
+        <div class="small" style="margin-top:6px">
+          {% if status.renewal %}Prochaine échéance le {{ status.renewal | date_fr }} ({{ status.days_to_renewal }} jours).{% endif %}
+          {% if status.notice_deadline %} Date limite de résiliation : {{ status.notice_deadline | date_fr }}.{% endif %}
+          {% if status.hamon_open_from %} Résiliation libre (loi Hamon) depuis le {{ status.hamon_open_from | date_fr }}.{% endif %}
+        </div>
+      </div>
+    </div>
+
+    <form class="card" method="post" action="{{ url_for('contract_update', contract_id=contract.id) }}" style="margin-top:16px">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="card-head"><h2>Informations du contrat</h2></div>
+      <div class="form-grid">
+        <div class="field"><label>Intitulé</label><input name="name" type="text" value="{{ contract.name }}" required></div>
+        <div class="field"><label>Catégorie</label>
+          <select name="category">{% for key, label in categories.items() %}<option value="{{ key }}" {{ 'selected' if contract.category == key }}>{{ label }}</option>{% endfor %}</select></div>
+        <div class="field"><label>Assureur</label><input name="insurer" type="text" value="{{ contract.insurer }}"></div>
+        <div class="field"><label>N° de police</label><input name="policy_number" type="text" value="{{ contract.policy_number }}"></div>
+        <div class="field"><label>Prime</label><input name="premium" type="text" inputmode="decimal" value="{{ contract.premium_cents | money(False) }}"></div>
+        <div class="field"><label>Périodicité</label>
+          <select name="frequency">{% for key, label in frequencies.items() %}<option value="{{ key }}" {{ 'selected' if contract.frequency == key }}>{{ label }}</option>{% endfor %}</select></div>
+        <div class="field"><label>Date de souscription</label><input name="start_date" type="date" value="{{ contract.start_date.isoformat() if contract.start_date else '' }}"></div>
+        <div class="field"><label>Date d'échéance annuelle</label><input name="renewal_date" type="date" value="{{ contract.renewal_date.isoformat() if contract.renewal_date else '' }}"></div>
+        <div class="field"><label>Préavis (jours)</label><input name="notice_period_days" type="number" min="0" value="{{ contract.notice_period_days }}"></div>
+        <div class="field"><label>Enveloppe budgétaire</label>
+          <select name="envelope_id"><option value="">Aucune</option>
+            {% for envelope in envelopes %}<option value="{{ envelope.id }}" {{ 'selected' if contract.envelope_id == envelope.id }}>{{ envelope.name }}</option>{% endfor %}</select></div>
+        <div class="field"><label>Compte de prélèvement</label>
+          <select name="account_id"><option value="">Aucun</option>
+            {% for account in accounts %}<option value="{{ account.id }}" {{ 'selected' if contract.account_id == account.id }}>{{ account.name }}</option>{% endfor %}</select></div>
+        <div class="field"><label>Statut</label>
+          <select name="status">
+            <option value="active" {{ 'selected' if contract.status == 'active' }}>Actif</option>
+            <option value="pending_cancel" {{ 'selected' if contract.status == 'pending_cancel' }}>Résiliation envoyée</option>
+            <option value="ended" {{ 'selected' if contract.status == 'ended' }}>Clos</option>
+          </select></div>
+        <div class="field" style="justify-content:flex-end">
+          <label class="check"><input type="checkbox" name="hamon_eligible" {{ 'checked' if contract.hamon_eligible }}> Éligible loi Hamon</label></div>
+        <div class="field full"><label>Contact</label><input name="contact" type="text" value="{{ contract.contact }}"></div>
+        <div class="field full"><label>Notes</label><textarea name="notes">{{ contract.notes }}</textarea></div>
+      </div>
+      <div class="form-actions">
+        <button class="btn primary" type="submit">Enregistrer</button>
+      </div>
+    </form>
+
+    <div class="card">
+      <div class="card-head"><h2>Pièces jointes</h2><span class="pill">{{ contract.documents | length }}</span></div>
+
+      <form method="post" action="{{ url_for('document_upload', contract_id=contract.id) }}" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="form-grid upload">
+          <div class="field"><label for="doc-file">Fichier</label>
+            <input id="doc-file" name="upload" type="file" required
+                   accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.gif,.doc,.docx,.odt,.txt,.eml,.csv,.xlsx"></div>
+          <div class="field"><label for="doc-type">Nature</label>
+            <select id="doc-type" name="doc_type">
+              {% for key, label in doc_types.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+            </select></div>
+          <button class="btn primary" type="submit">Joindre</button>
+        </div>
+      </form>
+
+      <div class="list" style="margin-top:14px">
+        {% for document in contract.documents %}
+        <div class="list-item">
+          <span class="pill">{{ doc_types.get(document.doc_type, document.doc_type) }}</span>
+          <div class="grow">
+            <a class="strong" href="{{ url_for('document_download', document_id=document.id) }}">{{ document.original_name }}</a>
+            <div class="tiny mute">{{ document.uploaded_at | date_fr('%d/%m/%Y') }} · {{ human_size(document.size_bytes) }} · SHA-256 {{ document.sha256[:12] }}…</div>
+          </div>
+          <form method="post" action="{{ url_for('document_delete', document_id=document.id) }}" data-confirm="Supprimer définitivement ce document ?">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="btn ghost sm" type="submit">✕</button>
+          </form>
+        </div>
+        {% else %}
+        <div class="empty">Aucun document. Joignez le contrat, l'attestation et le dernier avis d'échéance.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="card">
+      <div class="card-head"><h2>Coût</h2></div>
+      <div class="kpi" style="border:none;padding:0;box-shadow:none">
+        <span class="label">Par an</span>
+        <span class="value num">{{ status.annual_cost | money }}</span>
+        <span class="hint">{{ contract.premium_cents | money }} × {{ frequencies[contract.frequency] }}</span>
+      </div>
+      <div class="list" style="margin-top:12px">
+        <div class="list-item"><div class="grow small">À provisionner chaque mois</div><span class="num strong">{{ status.monthly_provision | money }}</span></div>
+        {% if contract.envelope %}
+        <div class="list-item"><div class="grow small">Enveloppe</div>
+          <span class="pill" style="background:{{ contract.envelope.color }}22;color:{{ contract.envelope.color }}">{{ contract.envelope.name }}</span></div>
+        {% endif %}
+      </div>
+      {% if not contract.envelope %}
+      <p class="tiny mute" style="margin-top:10px">Reliez ce contrat à une enveloppe de type « provision » pour lisser la prime sur l'année.</p>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Dates clés</h2></div>
+      <div class="list">
+        <div class="list-item"><div class="grow small">Souscription</div><span class="num small">{{ contract.start_date | date_fr }}</span></div>
+        <div class="list-item"><div class="grow small">Prochaine échéance</div><span class="num small strong">{{ status.renewal | date_fr }}</span></div>
+        <div class="list-item"><div class="grow small">Date limite de résiliation</div><span class="num small {{ 'neg' if status.level == 'critical' }}">{{ status.notice_deadline | date_fr }}</span></div>
+        <div class="list-item"><div class="grow small">Résiliation libre depuis</div><span class="num small">{{ status.hamon_open_from | date_fr }}</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Zone sensible</h2></div>
+      <form method="post" action="{{ url_for('contract_delete', contract_id=contract.id) }}"
+            data-confirm="Supprimer ce contrat et TOUTES ses pièces jointes ? Cette action est définitive.">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button class="btn danger block" type="submit">Supprimer le contrat</button>
+      </form>
+      <p class="tiny mute" style="margin-top:8px">Les fichiers joints seront effacés du disque.</p>
+    </div>
+  </div>
+</div>
+{% endblock %}

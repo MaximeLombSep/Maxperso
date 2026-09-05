@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}Import terminé — Enveloppe{% endblock %}
+{% block content %}
+
+<div class="topbar">
+  <div>
+    <h1>Import terminé</h1>
+    <div class="page-sub">{{ filename }} → {{ account.name }}</div>
+  </div>
+</div>
+
+<div class="grid g4" style="margin-bottom:16px">
+  <div class="kpi accent"><span class="label">Opérations ajoutées</span><span class="value num">{{ result.inserted }}</span><span class="hint">sur {{ result.total_rows }} lignes lues</span></div>
+  <div class="kpi"><span class="label">Doublons écartés</span><span class="value num">{{ result.duplicates }}</span><span class="hint">empreinte identique, déjà en base</span></div>
+  <div class="kpi"><span class="label">Classées automatiquement</span><span class="value num pos">{{ result.categorized }}</span><span class="hint">par vos règles</span></div>
+  <div class="kpi"><span class="label">Lignes ignorées</span><span class="value num {{ 'neg' if result.errors }}">{{ result.errors }}</span><span class="hint">date ou montant illisible</span></div>
+</div>
+
+{% if card_reports %}
+<div class="card">
+  <div class="card-head"><h2>Cartes à débit différé</h2></div>
+  <div class="list">
+    {% for report in card_reports %}
+    <div class="list-item" style="align-items:flex-start">
+      <span class="env-chip" style="background:linear-gradient(135deg,var(--accent),var(--accent-2))">▤</span>
+      <div class="grow">
+        <div class="strong">{{ report.block.label }}</div>
+        {% if report.skipped %}
+        <div class="small dim">Laissée sur le compte : les achats gardent la date du prélèvement.</div>
+        {% else %}
+        <div class="small dim">
+          {{ report.result.inserted }} achat(s) importé(s) dans « {{ report.card.name }} »
+          {%- if report.result.duplicates %}, {{ report.result.duplicates }} déjà présent(s){% endif %}.
+          {% if report.settled %}
+          Prélèvement du {{ report.block.settlement_on | date_fr }}
+          ({{ report.block.announced_cents | money }}) rapproché : {{ report.attached }} achat(s) soldé(s).
+          {% else %}
+          <span class="neg">Prélèvement non retrouvé sur le compte : à rapprocher à la main.</span>
+          {% endif %}
+        </div>
+        {% endif %}
+      </div>
+      {% if not report.skipped %}
+      <a class="btn sm" href="{{ url_for('cards_page') }}">Voir la carte</a>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% if result.suspects %}
+<div class="card">
+  <div class="card-head">
+    <h2>{{ result.suspects | length }} quasi-doublon(s) écarté(s)</h2>
+    <span class="pill warn">non insérés</span>
+  </div>
+  <p class="small dim">
+    Ces opérations recopient une opération déjà enregistrée : même montant, date
+    voisine, libellé très proche. C'est ce qui arrive quand un relevé PDF est
+    importé après l'export CSV du même mois. Si l'une d'elles est en réalité une
+    dépense distincte, relancez l'import en cochant « insérer malgré tout ».
+  </p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th>Opération écartée</th><th class="amount">Montant</th>
+        <th>Ressemble à</th><th class="amount">Proximité</th>
+      </tr></thead>
+      <tbody>
+        {% for suspect in result.suspects %}
+        <tr>
+          <td><span class="small dim">{{ suspect.parsed.op_date | date_fr }}</span><br>{{ suspect.parsed.label }}</td>
+          <td class="amount num {{ 'neg' if suspect.parsed.amount_cents < 0 else 'pos' }}">{{ suspect.parsed.amount_cents | money }}</td>
+          <td><span class="small dim">{{ suspect.existing_date | date_fr }}</span><br>{{ suspect.existing_label }}</td>
+          <td class="amount num">{{ (suspect.similarity * 100) | round | int }} %</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% if result.messages %}
+<div class="card">
+  <div class="card-head"><h2>Lignes ignorées</h2></div>
+  <ul class="small dim" style="margin:0 0 0 16px">
+    {% for message in result.messages %}<li>{{ message }}</li>{% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-head"><h2>Et maintenant</h2></div>
+  <div class="list">
+    <div class="list-item"><div class="grow"><strong>1.</strong> Classez les opérations restées sans enveloppe — chaque affectation peut créer une règle réutilisable.</div>
+      <a class="btn sm primary" href="{{ url_for('transactions_page').include_query_params(envelope_id='none') }}">Classer</a></div>
+    <div class="list-item"><div class="grow"><strong>2.</strong> Répartissez vos revenus dans les enveloppes du mois.</div>
+      <a class="btn sm" href="{{ url_for('budget_page') }}">Budget</a></div>
+    <div class="list-item"><div class="grow"><strong>3.</strong> Vérifiez les prélèvements récurrents détectés et les pistes d'économies.</div>
+      <a class="btn sm" href="{{ url_for('analytics_page') }}">Analyses</a></div>
+  </div>
+</div>
+{% endblock %}

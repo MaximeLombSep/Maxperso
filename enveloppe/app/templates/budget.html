@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+{% block title %}Budget — Enveloppe{% endblock %}
+{% block content %}
+
+<div class="topbar">
+  <div>
+    <h1>Budget</h1>
+    <div class="page-sub">Donnez un rôle à chaque euro : ce qui reste à budgéter doit finir à zéro.</div>
+  </div>
+  <div class="grow"></div>
+  {% with endpoint='budget_page' %}{% include "partials/month_nav.html" %}{% endwith %}
+  <form method="post" action="{{ url_for('autofill') }}" style="display:flex;gap:8px">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="period" value="{{ period }}">
+    <select name="mode" aria-label="Mode de remplissage">
+      <option value="suggested">Dotation prévue</option>
+      <option value="last_month">Comme le mois dernier</option>
+      <option value="average3">Moyenne 3 mois</option>
+    </select>
+    <button class="btn" type="submit">Remplir les vides</button>
+  </form>
+  <button class="btn" type="button" data-toggle="#move-money">⇄ Déplacer de l'argent</button>
+</div>
+
+<form id="move-money" class="card hidden" method="post" action="{{ url_for('move_money') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="period" value="{{ period }}">
+  <div class="card-head">
+    <h2>Déplacer de l'argent entre enveloppes</h2>
+    <span class="pill">{{ period_label(period) }}</span>
+  </div>
+  <p class="small dim">Une enveloppe en dépassement ne se répare pas en fabriquant de l'argent : on en reprend dans une autre. Le total doté du mois, lui, ne bouge pas.</p>
+  <div class="form-grid">
+    <div class="field"><label for="move-source">Reprendre dans</label>
+      <select id="move-source" name="source_id" required>
+        {% for state in summary.envelopes %}{% if state.envelope.kind != 'income' %}
+        <option value="{{ state.envelope.id }}">{{ state.envelope.name }} — {{ state.available | money }} disponible</option>
+        {% endif %}{% endfor %}
+      </select></div>
+    <div class="field"><label for="move-target">Verser dans</label>
+      <select id="move-target" name="target_id" required>
+        {% for state in summary.envelopes %}{% if state.envelope.kind != 'income' %}
+        <option value="{{ state.envelope.id }}">{{ state.envelope.name }}</option>
+        {% endif %}{% endfor %}
+      </select></div>
+    <div class="field"><label for="move-amount">Montant</label>
+      <input id="move-amount" name="amount" type="text" inputmode="decimal" placeholder="0,00" required></div>
+  </div>
+  <div class="form-actions">
+    <button class="btn ghost" type="button" data-toggle="#move-money">Annuler</button>
+    <button class="btn primary" type="submit">Déplacer</button>
+  </div>
+</form>
+
+<div class="grid g4" style="margin-bottom:16px">
+  <div class="kpi accent">
+    <span class="label">Reste à budgéter</span>
+    <span class="value num" data-to-budget>{{ summary.to_budget | money }}</span>
+    <span class="hint">Revenus encaissés moins dotations affectées</span>
+  </div>
+  <div class="kpi">
+    <span class="label">Dotations du mois</span>
+    <span class="value num">{{ summary.allocated | money }}</span>
+    <span class="hint">Réparties sur {{ summary.envelopes | length }} enveloppes</span>
+  </div>
+  <div class="kpi">
+    <span class="label">Dépensé</span>
+    <span class="value num neg">{{ summary.expense | money }}</span>
+    <span class="hint">{{ summary.income | money }} de revenus</span>
+  </div>
+  <div class="kpi">
+    <span class="label">Disponible en enveloppes</span>
+    <span class="value num {{ 'neg' if summary.available_total < 0 else 'pos' }}">{{ summary.available_total | money }}</span>
+    <span class="hint">Report inclus</span>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h2>Enveloppes de {{ period_label(period) }}</h2>
+    <a class="btn sm ghost" href="{{ url_for('envelopes_page') }}">Configurer les enveloppes</a>
+  </div>
+
+  <div class="env-row env-head" style="border:none;padding-bottom:0">
+    <div class="tiny mute strong">ENVELOPPE</div>
+    <div class="tiny mute strong right cell-alloc">DOTATION</div>
+    <div class="tiny mute strong right cell-spent">DÉPENSÉ</div>
+    <div class="tiny mute strong right cell-avail">DISPONIBLE</div>
+    <div class="tiny mute strong cell-bar">AVANCEMENT</div>
+  </div>
+
+  {% for group in summary.groups %}
+  <div class="env-group">
+    <div class="env-group-head">
+      <span>{{ group.group.name if group.group else 'Sans groupe' }}</span>
+      <span class="spacer"></span>
+      <span class="num">{{ group.allocated | money }} doté · {{ group.spent | money }} dépensé</span>
+    </div>
+
+    {% for state in group.envelopes %}
+    <div class="env-row">
+      <div class="env-name">
+        <span class="env-chip" style="background:{{ state.envelope.color }}">{{ state.envelope.icon }}</span>
+        <div style="min-width:0">
+          <div class="truncate strong">{{ state.envelope.name }}</div>
+          <div class="env-meta">
+            {% if state.envelope.kind == 'sinking' %}
+              provision{% if state.envelope.target_cents %} · cible {{ state.envelope.target_cents | money }}{% endif %}
+              {%- if state.envelope.target_date %} au {{ state.envelope.target_date | date_fr('%m/%Y') }}{% endif %}
+              {%- if state.suggested %} · conseillé {{ state.suggested | money }}{% endif %}
+            {% elif state.envelope.kind == 'income' %}
+              revenus
+            {% else %}
+              {% if state.carry_in %}report {{ state.carry_in | money }}{% else %}mensuel{% endif %}
+              {%- if state.envelope.essential %} · essentiel{% endif %}
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      {% if state.envelope.kind == 'income' %}
+      <div class="cell-alloc right tiny mute" style="align-self:center">encaissé</div>
+      <div class="num right cell-spent pos">{{ state.activity | money }}</div>
+      <div class="cell-avail tiny mute right">va au reste à budgéter</div>
+      <div class="cell-bar"></div>
+      {% else %}
+      <div class="cell-alloc">
+        <input class="alloc-input" type="text" inputmode="decimal"
+               value="{{ state.allocated | money(False) }}"
+               data-alloc data-envelope="{{ state.envelope.id }}" data-period="{{ period }}"
+               aria-label="Dotation de {{ state.envelope.name }}">
+      </div>
+
+      <div class="num right cell-spent">{{ state.spent | money }}</div>
+
+      <div class="num env-available cell-avail {{ 'neg' if state.available < 0 else 'pos' if state.available > 0 else '' }}"
+           data-available="{{ state.envelope.id }}">{{ state.available | money }}</div>
+
+      <div class="cell-bar">
+        {% if state.overspent %}
+        <button class="btn sm ghost" type="button"
+                data-cover="{{ state.envelope.id }}"
+                data-cover-amount="{{ (-state.available) | money(False) }}"
+                title="Reprendre {{ (-state.available) | money }} dans une autre enveloppe">Couvrir</button>
+        {% else %}
+        <div class="bar">
+          <span style="width:{{ [state.progress * 100, 100] | min | round(1) }}%"></span>
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty"><div class="big">✉</div>Aucune enveloppe. <a href="{{ url_for('envelopes_page') }}">Créez-en une</a>.</div>
+  {% endfor %}
+</div>
+
+<details class="disclose card" style="margin-top:16px">
+  <summary>Comment lire cet écran</summary>
+  <div class="small dim">
+    <p><strong>Dotation</strong> : l'argent que vous décidez de mettre dans l'enveloppe pour ce mois. Modifiable directement dans la case, enregistrée à la sortie du champ.</p>
+    <p><strong>Disponible</strong> : report du mois précédent + dotation − dépenses. En rouge, l'enveloppe est en dépassement : reprenez l'argent dans une autre enveloppe plutôt que de l'ignorer.</p>
+    <p><strong>Reste à budgéter</strong> : ce qui est entré sur vos comptes depuis le premier mois que vous avez budgété, moins tout ce que vous avez affecté. L'objectif est de l'amener à zéro chaque mois. Un historique importé avant votre première dotation ne compte pas : il sert aux analyses, pas au budget.</p>
+    <p><strong>Enveloppe de revenus</strong> : c'est une catégorie, pas une réserve. Le salaire encaissé alimente le reste à budgéter ; l'enveloppe sert seulement à savoir d'où vient l'argent. Elle n'a donc ni dotation ni disponible — sans quoi la même somme serait affichée deux fois.</p>
+    <p><strong>Provision</strong> : pour les échéances annuelles (assurances, impôts, vacances). La dotation conseillée étale la cible sur les mois restants jusqu'à la date d'échéance.</p>
+  </div>
+</details>
+{% endblock %}

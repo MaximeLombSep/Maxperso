@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}Enveloppes — Enveloppe{% endblock %}
+{% block content %}
+
+<div class="topbar">
+  <div>
+    <h1>Enveloppes</h1>
+    <div class="page-sub">La structure de votre budget. Une enveloppe = une intention de dépense.</div>
+  </div>
+  <div class="grow"></div>
+  <button class="btn primary" type="button" data-toggle="#new-envelope">+ Nouvelle enveloppe</button>
+  <button class="btn" type="button" data-toggle="#new-group">+ Groupe</button>
+</div>
+
+<form id="new-group" class="card hidden" method="post" action="{{ url_for('group_create') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <div class="card-head"><h2>Nouveau groupe</h2></div>
+  <div class="form-grid">
+    <div class="field full"><label for="group-name">Nom du groupe</label>
+      <input id="group-name" name="name" type="text" required placeholder="Ex. Enfants, Résidence secondaire…"></div>
+  </div>
+  <div class="form-actions"><button class="btn primary" type="submit">Créer</button></div>
+</form>
+
+<form id="new-envelope" class="card hidden" method="post" action="{{ url_for('envelope_create') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <div class="card-head"><h2>Nouvelle enveloppe</h2></div>
+  <div class="form-grid">
+    <div class="field"><label for="e-name">Nom</label><input id="e-name" name="name" type="text" required></div>
+    <div class="field"><label for="e-group">Groupe</label>
+      <select id="e-group" name="group_id">
+        <option value="">Sans groupe</option>
+        {% for group in groups %}<option value="{{ group.id }}">{{ group.name }}</option>{% endfor %}
+      </select></div>
+    <div class="field"><label for="e-kind">Type</label>
+      <select id="e-kind" name="kind">
+        <option value="monthly">Mensuelle</option>
+        <option value="sinking">Provision (échéance future)</option>
+        <option value="income">Revenus</option>
+      </select></div>
+    <div class="field"><label for="e-planned">Dotation mensuelle prévue</label><input id="e-planned" name="planned" type="text" inputmode="decimal" placeholder="0,00"></div>
+    <div class="field"><label for="e-target">Cible (provision)</label><input id="e-target" name="target" type="text" inputmode="decimal" placeholder="0,00"></div>
+    <div class="field"><label for="e-target-date">Échéance</label><input id="e-target-date" name="target_date" type="date"></div>
+    <div class="field"><label for="e-color">Couleur</label><input id="e-color" name="color" type="color" value="#6366f1"></div>
+    <div class="field"><label for="e-icon">Symbole</label><input id="e-icon" name="icon" type="text" maxlength="4" value="•"></div>
+    <div class="field" style="justify-content:flex-end;gap:10px">
+      <label class="check"><input type="checkbox" name="rollover" checked> Reporter le solde d'un mois sur l'autre</label>
+      <label class="check"><input type="checkbox" name="essential"> Dépense essentielle (fonds de sécurité)</label>
+    </div>
+  </div>
+  <div class="form-actions"><button class="btn primary" type="submit">Créer l'enveloppe</button></div>
+</form>
+
+<div class="card">
+  <div class="card-head"><h2>{{ envelopes | length }} enveloppes</h2></div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th>Enveloppe</th><th>Groupe</th><th>Type</th>
+        <th class="amount">Prévu / mois</th><th class="amount">Cible</th><th>Options</th><th></th>
+      </tr></thead>
+      <tbody>
+        {% for envelope in envelopes %}
+        <tr>
+          <td><span class="env-chip" style="background:{{ envelope.color }};display:inline-grid;vertical-align:middle;margin-right:8px">{{ envelope.icon }}</span>
+            <span class="strong">{{ envelope.name }}</span>
+            {% if envelope.archived %}<span class="pill">archivée</span>{% endif %}</td>
+          <td class="small dim">{{ envelope.group.name if envelope.group else '—' }}</td>
+          <td class="small">
+            {% if envelope.kind == 'sinking' %}<span class="pill info">provision</span>
+            {% elif envelope.kind == 'income' %}<span class="pill pos">revenus</span>
+            {% else %}<span class="pill">mensuelle</span>{% endif %}
+          </td>
+          <td class="amount num">{{ envelope.planned_cents | money }}</td>
+          <td class="amount num">{% if envelope.target_cents %}{{ envelope.target_cents | money }}{% if envelope.target_date %} <span class="tiny mute">{{ envelope.target_date | date_fr('%m/%Y') }}</span>{% endif %}{% else %}—{% endif %}</td>
+          <td class="tiny mute">{% if envelope.rollover %}report{% endif %}{% if envelope.essential %} · essentiel{% endif %}</td>
+          <td><button class="btn ghost sm" type="button" data-toggle="#env-{{ envelope.id }}">Modifier</button></td>
+        </tr>
+        <tr id="env-{{ envelope.id }}" class="hidden">
+          <td colspan="7" style="background:var(--surface-2)">
+            <form method="post" action="{{ url_for('envelope_update', envelope_id=envelope.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <div class="form-grid">
+                <div class="field"><label>Nom</label><input name="name" type="text" value="{{ envelope.name }}" required></div>
+                <div class="field"><label>Groupe</label>
+                  <select name="group_id">
+                    <option value="">Sans groupe</option>
+                    {% for group in groups %}<option value="{{ group.id }}" {{ 'selected' if envelope.group_id == group.id }}>{{ group.name }}</option>{% endfor %}
+                  </select></div>
+                <div class="field"><label>Type</label>
+                  <select name="kind">
+                    <option value="monthly" {{ 'selected' if envelope.kind == 'monthly' }}>Mensuelle</option>
+                    <option value="sinking" {{ 'selected' if envelope.kind == 'sinking' }}>Provision</option>
+                    <option value="income" {{ 'selected' if envelope.kind == 'income' }}>Revenus</option>
+                  </select></div>
+                <div class="field"><label>Dotation prévue</label><input name="planned" type="text" inputmode="decimal" value="{{ envelope.planned_cents | money(False) }}"></div>
+                <div class="field"><label>Cible</label><input name="target" type="text" inputmode="decimal" value="{{ envelope.target_cents | money(False) }}"></div>
+                <div class="field"><label>Échéance</label><input name="target_date" type="date" value="{{ envelope.target_date.isoformat() if envelope.target_date else '' }}"></div>
+                <div class="field"><label>Couleur</label><input name="color" type="color" value="{{ envelope.color }}"></div>
+                <div class="field"><label>Symbole</label><input name="icon" type="text" maxlength="4" value="{{ envelope.icon }}"></div>
+                <div class="field" style="gap:8px;justify-content:flex-end">
+                  <label class="check"><input type="checkbox" name="rollover" {{ 'checked' if envelope.rollover }}> Report</label>
+                  <label class="check"><input type="checkbox" name="essential" {{ 'checked' if envelope.essential }}> Essentielle</label>
+                  <label class="check"><input type="checkbox" name="archived" {{ 'checked' if envelope.archived }}> Archiver</label>
+                </div>
+              </div>
+              <div class="form-actions"><button class="btn primary" type="submit">Enregistrer</button></div>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

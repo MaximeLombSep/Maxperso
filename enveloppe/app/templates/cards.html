@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+{% block title %}Cartes différées — Enveloppe{% endblock %}
+{% block content %}
+
+<div class="topbar">
+  <div>
+    <h1>Cartes à débit différé</h1>
+    <div class="page-sub">Les achats pèsent sur le budget à leur date ; le prélèvement, lui, ne doit compter qu'une fois.</div>
+  </div>
+  <div class="grow"></div>
+  <form method="post" action="{{ url_for('cards_auto_match') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button class="btn primary" type="submit">⇄ Rapprocher automatiquement</button>
+  </form>
+</div>
+
+{% if unmatched %}
+<div class="alert critical" style="margin-bottom:16px">
+  <span class="ico">⚠</span>
+  <div class="grow">
+    <strong>{{ unmatched | length }} prélèvement(s) de carte non rapproché(s).</strong>
+    Tant qu'ils ne le sont pas, ils comptent comme une dépense ordinaire :
+    le mois est chargé deux fois, une fois à l'achat et une fois au règlement.
+    <div class="small" style="margin-top:8px">
+      {% for tx in unmatched[:5] %}
+      <div>{{ tx.op_date | date_fr }} · {{ tx.label }} · <span class="num strong">{{ tx.amount_cents | money }}</span></div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% for block in blocks %}
+{% set card = block.card %}
+<div class="card">
+  <div class="card-head">
+    <span class="env-chip" style="background:linear-gradient(135deg,var(--accent),var(--accent-2))">▤</span>
+    <h2 style="flex:1">{{ card.name }}
+      {% if card.iban_last4 %}<span class="tiny mute">••{{ card.iban_last4 }}</span>{% endif %}
+    </h2>
+    <a class="btn ghost sm" href="{{ url_for('accounts_page') }}">Paramètres de la carte</a>
+  </div>
+
+  <div class="grid g4" style="margin-bottom:16px">
+    <div class="kpi accent">
+      <span class="label">Encours à régler</span>
+      <span class="value num">{{ (-block.outstanding) | money }}</span>
+      <span class="hint">
+        {% if block.next_due %}Prochain prélèvement le {{ block.next_due.settlement_on | date_fr }}{% else %}Rien en attente{% endif %}
+      </span>
+    </div>
+    <div class="kpi">
+      <span class="label">Prochain prélèvement</span>
+      <span class="value num">{% if block.next_due %}{{ block.next_due.amount_due_cents | money }}{% else %}—{% endif %}</span>
+      <span class="hint">{% if block.next_due %}Cycle {{ period_label(block.next_due.period) }}{% else %}Aucun cycle ouvert{% endif %}</span>
+    </div>
+    <div class="kpi">
+      <span class="label">Compte débité</span>
+      <span class="value" style="font-size:1.05rem">{{ card.settlement_account.name if card.settlement_account else '— non défini —' }}</span>
+      <span class="hint">
+        Arrêté {{ 'le dernier jour' if not card.cutoff_day else 'le ' ~ card.cutoff_day }} ·
+        prélèvement {{ 'le dernier jour' if not card.settlement_day else 'le ' ~ card.settlement_day }}
+      </span>
+    </div>
+    <div class="kpi">
+      <span class="label">Solde projeté du compte</span>
+      {% if card.settlement_account_id %}
+      <span class="value num {{ 'neg' if projected.get(card.settlement_account_id, 0) < 0 else '' }}">{{ projected.get(card.settlement_account_id, 0) | money }}</span>
+      <span class="hint">{{ balances.get(card.settlement_account_id, 0) | money }} affiché par la banque</span>
+      {% else %}
+      <span class="value">—</span>
+      <span class="hint">Renseignez le compte de règlement</span>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if not card.settlement_account_id %}
+  <div class="alert warning">
+    <span class="ico">⚙</span>
+    <div>Cette carte n'a pas de compte de règlement : le rapprochement est impossible.
+      <a href="{{ url_for('accounts_page') }}">Renseignez-le dans les comptes</a>.</div>
+  </div>
+  {% endif %}
+
+  <div class="table-wrap">
+    <table class="stack">
+      <thead><tr>
+        <th>Cycle</th><th>Arrêté</th><th>Prélèvement prévu</th>
+        <th class="amount">Achats</th><th class="amount">Montant</th><th>État</th><th></th>
+      </tr></thead>
+      <tbody>
+        {% for cycle in block.cycles %}
+        <tr>
+          <td class="strong" data-label="">{{ period_label(cycle.period) }}</td>
+          <td class="small dim" data-label="Arrêté">{{ cycle.card.cutoff_day and cycle.card.cutoff_day or 'fin de mois' }}</td>
+          <td class="small" data-label="Prélèvement">{{ cycle.settlement_on | date_fr }}</td>
+          <td class="amount num dim" data-label="Achats">{{ cycle.purchases | length }}</td>
+          <td class="amount num strong" data-label="Montant">{{ cycle.amount_due_cents | money }}</td>
+          <td data-label="État">
+            {% if cycle.settled %}
+              <span class="pill pos">réglé le {{ cycle.settled_by.op_date | date_fr('%d/%m') }}</span>
+            {% elif not cycle.purchases %}
+              <span class="pill">aucun achat</span>
+            {% elif cycle.is_closed(today) %}
+              <span class="pill warn">à rapprocher</span>
+            {% else %}
+              <span class="pill info">en cours</span>
+            {% endif %}
+          </td>
+          <td data-label="">
+            {% if cycle.settled %}
+            <form method="post" action="{{ url_for('card_unlink_settlement', transaction_id=cycle.settled_by.id) }}"
+                  data-confirm="Défaire le rapprochement de ce cycle ?">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button class="btn ghost sm" type="submit">Détacher</button>
+            </form>
+            {% elif block.candidates.get(cycle.period) %}
+            <form method="post" action="{{ url_for('card_link_settlement', card_id=card.id, period=cycle.period) }}"
+                  style="display:flex;gap:6px;align-items:center">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <select name="transaction_id" aria-label="Prélèvement correspondant">
+                {% for candidate in block.candidates[cycle.period] %}
+                <option value="{{ candidate.id }}">
+                  {{ candidate.op_date | date_fr('%d/%m') }} · {{ candidate.amount_cents | money }}
+                  {%- if candidate.amount_cents == cycle.total_cents %} · montant exact{% endif %}
+                </option>
+                {% endfor %}
+              </select>
+              <button class="btn sm" type="submit">Rapprocher</button>
+            </form>
+            {% elif cycle.purchases and cycle.is_closed(today) %}
+            <span class="tiny mute">Aucun débit candidat sur le compte de règlement</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="card">
+  <div class="empty">
+    <div class="big">▤</div>
+    Aucune carte à débit différé enregistrée.<br>
+    Créez un compte de type « Carte à débit différé » depuis
+    <a href="{{ url_for('accounts_page') }}">l'écran Comptes</a>, puis importez-y le relevé de la carte.
+  </div>
+</div>
+{% endfor %}
+
+<details class="disclose card" style="margin-top:16px">
+  <summary>Comment fonctionne le suivi d'une carte différée</summary>
+  <div class="small dim">
+    <p><strong>La carte est un compte à part.</strong> Vous y importez le relevé de carte : chaque achat garde sa date réelle et pèse sur le budget du mois où il a eu lieu, ce qui correspond à ce que vous avez vécu.</p>
+    <p><strong>Le prélèvement global n'est pas une dépense.</strong> Quand il est rapproché, il devient un virement interne : neutre pour le budget, puisque les achats qu'il solde ont déjà été comptés. Sans ce rapprochement, le mois du prélèvement serait chargé deux fois.</p>
+    <p><strong>Le solde projeté</strong> retranche l'encours du solde affiché par la banque : c'est l'argent dont vous disposez réellement une fois la carte prélevée.</p>
+    <p><strong>Le cycle</strong> dépend de deux dates réglées dans la fiche du compte : le jour d'arrêté (au-delà, l'achat bascule sur le cycle suivant) et le jour de prélèvement. Un arrêté en fin de mois réglé le 5 place le prélèvement au mois suivant.</p>
+  </div>
+</details>
+{% endblock %}

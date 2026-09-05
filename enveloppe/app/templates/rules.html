@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Règles — Enveloppe{% endblock %}
+{% block content %}
+
+<div class="topbar">
+  <div>
+    <h1>Règles de catégorisation</h1>
+    <div class="page-sub">Elles classent les opérations à l'import. Priorité basse = appliquée en premier.</div>
+  </div>
+  <div class="grow"></div>
+  <form method="post" action="{{ url_for('rules_apply') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="scope" value="pending">
+    <button class="btn" type="submit">⟳ Appliquer aux opérations non classées</button>
+  </form>
+  <button class="btn primary" type="button" data-toggle="#new-rule">+ Nouvelle règle</button>
+</div>
+
+<form id="new-rule" class="card hidden" method="post" action="{{ url_for('rule_create') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <div class="card-head"><h2>Nouvelle règle</h2></div>
+  <div class="form-grid">
+    <div class="field"><label for="r-pattern">Motif recherché</label>
+      <input id="r-pattern" name="pattern" type="text" required placeholder="CARREFOUR">
+      <span class="tiny mute">Comparé au libellé nettoyé (majuscules, sans accents ni numéros de carte).</span></div>
+    <div class="field"><label for="r-envelope">Enveloppe</label>
+      <select id="r-envelope" name="envelope_id" required>
+        {% for envelope in envelopes %}<option value="{{ envelope.id }}">{{ envelope.name }}</option>{% endfor %}
+      </select></div>
+    <div class="field"><label for="r-matcher">Comparaison</label>
+      <select id="r-matcher" name="matcher">
+        <option value="contains">Contient</option>
+        <option value="prefix">Commence par</option>
+        <option value="regex">Expression régulière</option>
+      </select></div>
+    <div class="field"><label for="r-sign">Sens</label>
+      <select id="r-sign" name="sign">
+        <option value="any">Indifférent</option>
+        <option value="debit">Débits seulement</option>
+        <option value="credit">Crédits seulement</option>
+      </select></div>
+    <div class="field"><label for="r-min">Montant minimum</label><input id="r-min" name="min_amount" type="text" inputmode="decimal" placeholder="—"></div>
+    <div class="field"><label for="r-max">Montant maximum</label><input id="r-max" name="max_amount" type="text" inputmode="decimal" placeholder="—"></div>
+    <div class="field"><label for="r-priority">Priorité</label><input id="r-priority" name="priority" type="number" value="100"></div>
+  </div>
+  <div class="form-actions"><button class="btn primary" type="submit">Créer la règle</button></div>
+</form>
+
+<div class="card">
+  <div class="card-head"><h2>{{ rules | length }} règles</h2></div>
+  <div class="table-wrap">
+    <table class="stack">
+      <thead><tr>
+        <th style="width:70px">Priorité</th><th>Motif</th><th>Enveloppe</th>
+        <th>Comparaison</th><th>Sens</th><th class="amount">Utilisations</th><th></th>
+      </tr></thead>
+      <tbody>
+        {% for rule in rules %}
+        <tr style="{{ 'opacity:.5' if not rule.enabled }}">
+          <td class="num small" data-label="Priorité">{{ rule.priority }}</td>
+          <td data-label=""><span class="strong">{{ rule.pattern }}</span>
+            {% if rule.auto_learned %}<span class="pill accent">apprise</span>{% endif %}</td>
+          <td data-label="Enveloppe">{% if rule.envelope %}<span class="env-chip" style="background:{{ rule.envelope.color }};display:inline-grid;vertical-align:middle;margin-right:6px">{{ rule.envelope.icon }}</span>{{ rule.envelope.name }}{% endif %}</td>
+          <td class="small dim" data-label="Comparaison">{{ {'contains':'contient','prefix':'commence par','regex':'regex'}[rule.matcher] }}</td>
+          <td class="small dim" data-label="Sens">{{ {'any':'indifférent','debit':'débits','credit':'crédits'}[rule.sign] }}</td>
+          <td class="amount num" data-label="Utilisations">{{ rule.hits }}</td>
+          <td style="display:flex;gap:6px;justify-content:flex-end" data-label="">
+            <form method="post" action="{{ url_for('rule_toggle', rule_id=rule.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button class="btn ghost sm" type="submit">{{ 'Désactiver' if rule.enabled else 'Activer' }}</button>
+            </form>
+            <form method="post" action="{{ url_for('rule_delete', rule_id=rule.id) }}" data-confirm="Supprimer définitivement cette règle ?">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button class="btn danger sm" type="submit">Supprimer</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7"><div class="empty">Aucune règle.</div></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

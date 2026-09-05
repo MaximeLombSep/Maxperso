@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f5f6f8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b0d12" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Enveloppe">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="{{ url_for('static', path='/manifest.webmanifest') }}">
+<link rel="apple-touch-icon" href="{{ url_for('static', path='/icons/icon-180.png') }}">
+<title>{% block title %}Enveloppe{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static', path='/css/app.css') }}">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%234f46e5'/><path d='M18 32h64v40H18z' fill='none' stroke='white' stroke-width='7'/><path d='M18 32l32 24 32-24' fill='none' stroke='white' stroke-width='7'/></svg>">
+<script src="{{ url_for('static', path='/js/theme.js') }}"></script>
+<script src="{{ url_for('static', path='/js/app.js') }}" defer></script>
+</head>
+<body data-alloc-url="{{ url_for('set_allocation') }}" data-assign-url="{{ url_for('assign_envelope') }}">
+<div class="shell">
+  <aside class="sidebar">
+    <div class="brand"><span class="mark">✉</span> Enveloppe</div>
+
+    <nav class="nav">
+      <a href="{{ url_for('dashboard') }}" class="{{ 'on' if active == 'dashboard' }}"><span class="ico">◱</span> Tableau de bord</a>
+      <a href="{{ url_for('budget_page') }}" class="{{ 'on' if active == 'budget' }}"><span class="ico">▤</span> Budget</a>
+      <a href="{{ url_for('transactions_page') }}" class="{{ 'on' if active == 'transactions' }}"><span class="ico">≡</span> Opérations</a>
+      <a href="{{ url_for('import_form') }}" class="{{ 'on' if active == 'import' }}"><span class="ico">↧</span> Import</a>
+      <a href="{{ url_for('cards_page') }}" class="{{ 'on' if active == 'cards' }}"><span class="ico">▤</span> Cartes différées</a>
+
+      <div class="nav-label">Suivi</div>
+      <a href="{{ url_for('insurance_page') }}" class="{{ 'on' if active == 'insurance' }}"><span class="ico">▣</span> Assurances</a>
+      <a href="{{ url_for('savings_page') }}" class="{{ 'on' if active == 'savings' }}"><span class="ico">◆</span> Épargne</a>
+      <a href="{{ url_for('analytics_page') }}" class="{{ 'on' if active == 'analytics' }}"><span class="ico">◎</span> Analyses</a>
+
+      <div class="nav-label">Configuration</div>
+      <a href="{{ url_for('envelopes_page') }}" class="{{ 'on' if active == 'envelopes' }}"><span class="ico">✎</span> Enveloppes</a>
+      <a href="{{ url_for('rules_page') }}" class="{{ 'on' if active == 'rules' }}"><span class="ico">⚙</span> Règles</a>
+      <a href="{{ url_for('accounts_page') }}" class="{{ 'on' if active == 'accounts' }}"><span class="ico">▦</span> Comptes</a>
+      <a href="{{ url_for('settings_page') }}" class="{{ 'on' if active == 'settings' }}"><span class="ico">⚒</span> Réglages</a>
+
+      <div class="nav-label">Session</div>
+      <button type="button" class="btn ghost sm" data-theme-toggle style="justify-content:flex-start">◑ Thème clair / sombre</button>
+      <form method="post" action="{{ url_for('logout') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="btn ghost sm block" style="justify-content:flex-start">⏻ Se déconnecter</button>
+      </form>
+    </nav>
+  </aside>
+
+  <main class="main">
+    {% block content %}{% endblock %}
+  </main>
+</div>
+
+<nav class="mobile-bar">
+  <a href="{{ url_for('dashboard') }}" class="{{ 'on' if active == 'dashboard' }}"><span class="ico">◱</span> Accueil</a>
+  <a href="{{ url_for('budget_page') }}" class="{{ 'on' if active == 'budget' }}"><span class="ico">▤</span> Budget</a>
+  <a href="{{ url_for('transactions_page') }}" class="{{ 'on' if active == 'transactions' }}"><span class="ico">≡</span> Opé.</a>
+  <a href="{{ url_for('import_form') }}" class="{{ 'on' if active == 'import' }}"><span class="ico">↧</span> Import</a>
+  <button type="button" data-sheet-open
+          class="{{ 'on' if active in ['cards', 'insurance', 'savings', 'analytics', 'envelopes', 'rules', 'accounts', 'settings'] }}">
+    <span class="ico">☰</span> Plus
+  </button>
+</nav>
+
+<div class="sheet hidden" data-sheet>
+  <div class="sheet-backdrop" data-sheet-close></div>
+  <div class="sheet-panel" role="dialog" aria-label="Navigation">
+    <div class="sheet-grip"></div>
+    <div class="sheet-links">
+      <a href="{{ url_for('cards_page') }}" class="{{ 'on' if active == 'cards' }}"><span class="ico">▤</span> Cartes différées</a>
+      <a href="{{ url_for('insurance_page') }}" class="{{ 'on' if active == 'insurance' }}"><span class="ico">▣</span> Assurances</a>
+      <a href="{{ url_for('savings_page') }}" class="{{ 'on' if active == 'savings' }}"><span class="ico">◆</span> Épargne</a>
+      <a href="{{ url_for('analytics_page') }}" class="{{ 'on' if active == 'analytics' }}"><span class="ico">◎</span> Analyses</a>
+      <a href="{{ url_for('envelopes_page') }}" class="{{ 'on' if active == 'envelopes' }}"><span class="ico">✎</span> Enveloppes</a>
+      <a href="{{ url_for('rules_page') }}" class="{{ 'on' if active == 'rules' }}"><span class="ico">⚙</span> Règles</a>
+      <a href="{{ url_for('accounts_page') }}" class="{{ 'on' if active == 'accounts' }}"><span class="ico">▦</span> Comptes</a>
+      <a href="{{ url_for('settings_page') }}" class="{{ 'on' if active == 'settings' }}"><span class="ico">⚒</span> Réglages</a>
+    </div>
+    <div class="sheet-actions">
+      <button type="button" class="btn ghost" data-theme-toggle>◑ Thème clair / sombre</button>
+      <form method="post" action="{{ url_for('logout') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="btn ghost block">⏻ Se déconnecter</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% if flash %}<div class="flash {{ flash.l }}">{{ flash.m }}</div>{% endif %}
+</body>
+</html>

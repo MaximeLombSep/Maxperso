@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block title %}Assurances — Enveloppe{% endblock %}
+{% block content %}
+
+<div class="topbar">
+  <div>
+    <h1>Contrats d'assurance</h1>
+    <div class="page-sub">Échéances, préavis de résiliation, primes à provisionner et pièces justificatives.</div>
+  </div>
+  <div class="grow"></div>
+  <button class="btn primary" type="button" data-toggle="#new-contract">+ Nouveau contrat</button>
+</div>
+
+<div class="grid g3" style="margin-bottom:16px">
+  <div class="kpi accent"><span class="label">Coût annuel</span><span class="value num">{{ totals.annual_cents | money }}</span><span class="hint">{{ totals.count }} contrat(s) actif(s)</span></div>
+  <div class="kpi"><span class="label">À provisionner par mois</span><span class="value num">{{ totals.monthly_cents | money }}</span><span class="hint">Pour absorber les primes sans à-coups</span></div>
+  <div class="kpi"><span class="label">Alertes en cours</span>
+    <span class="value num {{ 'neg' if statuses | selectattr('level', 'in', ['critical', 'warning']) | list | length }}">{{ statuses | selectattr('level', 'in', ['critical', 'warning']) | list | length }}</span>
+    <span class="hint">Fenêtres de résiliation ouvertes</span></div>
+</div>
+
+<form id="new-contract" class="card hidden" method="post" action="{{ url_for('contract_create') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <div class="card-head"><h2>Nouveau contrat</h2></div>
+  <div class="form-grid">
+    <div class="field"><label for="c-name">Intitulé</label><input id="c-name" name="name" type="text" required placeholder="Habitation — résidence principale"></div>
+    <div class="field"><label for="c-category">Catégorie</label>
+      <select id="c-category" name="category">
+        {% for key, label in categories.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+      </select></div>
+    <div class="field"><label for="c-insurer">Assureur</label><input id="c-insurer" name="insurer" type="text"></div>
+    <div class="field"><label for="c-policy">N° de police</label><input id="c-policy" name="policy_number" type="text"></div>
+    <div class="field"><label for="c-premium">Prime</label><input id="c-premium" name="premium" type="text" inputmode="decimal" placeholder="0,00"></div>
+    <div class="field"><label for="c-frequency">Périodicité</label>
+      <select id="c-frequency" name="frequency">
+        {% for key, label in frequencies.items() %}<option value="{{ key }}" {{ 'selected' if key == 'annual' }}>{{ label }}</option>{% endfor %}
+      </select></div>
+    <div class="field"><label for="c-start">Date de souscription</label><input id="c-start" name="start_date" type="date"></div>
+    <div class="field"><label for="c-renewal">Date d'échéance annuelle</label><input id="c-renewal" name="renewal_date" type="date"></div>
+    <div class="field"><label for="c-notice">Préavis de résiliation (jours)</label><input id="c-notice" name="notice_period_days" type="number" value="60" min="0"></div>
+    <div class="field"><label for="c-envelope">Enveloppe budgétaire</label>
+      <select id="c-envelope" name="envelope_id">
+        <option value="">Aucune</option>
+        {% for envelope in envelopes %}<option value="{{ envelope.id }}">{{ envelope.name }}</option>{% endfor %}
+      </select></div>
+    <div class="field"><label for="c-account">Compte de prélèvement</label>
+      <select id="c-account" name="account_id">
+        <option value="">Aucun</option>
+        {% for account in accounts %}<option value="{{ account.id }}">{{ account.name }}</option>{% endfor %}
+      </select></div>
+    <div class="field" style="justify-content:flex-end">
+      <label class="check"><input type="checkbox" name="hamon_eligible"> Résiliable à tout moment après 1 an (loi Hamon)</label></div>
+    <div class="field full"><label for="c-contact">Contact (agence, téléphone, courriel)</label><input id="c-contact" name="contact" type="text"></div>
+    <div class="field full"><label for="c-notes">Notes</label><textarea id="c-notes" name="notes" placeholder="Garanties, franchises, sinistres en cours…"></textarea></div>
+  </div>
+  <div class="form-actions"><button class="btn primary" type="submit">Enregistrer le contrat</button></div>
+</form>
+
+{% set urgent = statuses | selectattr('level', 'in', ['critical', 'warning']) | list %}
+{% if urgent %}
+<div class="grid g2" style="margin-bottom:16px">
+  {% for status in urgent %}
+  <div class="alert {{ status.level }}">
+    <span class="ico">⏱</span>
+    <div class="grow">
+      <strong>{{ status.contract.name }}</strong><br>{{ status.message }}
+      {% if status.hamon_available %}<br><span class="tiny">Loi Hamon : résiliable sans attendre l'échéance.</span>{% endif %}
+      <div style="margin-top:8px"><a class="btn sm" href="{{ url_for('contract_detail', contract_id=status.contract.id) }}">Ouvrir</a></div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-head"><h2>Tous les contrats</h2></div>
+  <div class="table-wrap">
+    <table class="stack">
+      <thead><tr>
+        <th>Contrat</th><th>Catégorie</th><th>Assureur</th>
+        <th class="amount">Prime</th><th class="amount">Coût annuel</th>
+        <th>Échéance</th><th>Résiliation</th><th></th>
+      </tr></thead>
+      <tbody>
+        {% for status in statuses %}
+        <tr>
+          <td data-label="">
+            <a class="strong" href="{{ url_for('contract_detail', contract_id=status.contract.id) }}">{{ status.contract.name }}</a>
+            {% if status.contract.documents %}<span class="pill">{{ status.contract.documents | length }} doc.</span>{% endif %}
+            {% if status.contract.status != 'active' %}<span class="pill warn">{{ 'résiliation en cours' if status.contract.status == 'pending_cancel' else 'clos' }}</span>{% endif %}
+          </td>
+          <td class="small dim" data-label="Catégorie">{{ categories[status.contract.category] }}</td>
+          <td class="small dim truncate" data-label="Assureur">{{ status.contract.insurer or '—' }}</td>
+          <td class="amount num" data-label="Prime">{{ status.contract.premium_cents | money }} <span class="tiny mute">{{ frequencies[status.contract.frequency] }}</span></td>
+          <td class="amount num strong" data-label="Coût annuel">{{ status.annual_cost | money }}</td>
+          <td class="small" data-label="Échéance">
+            {% if status.renewal %}{{ status.renewal | date_fr }}<br>
+              <span class="tiny mute">dans {{ status.days_to_renewal }} j</span>
+            {% else %}<span class="mute">non renseignée</span>{% endif %}
+          </td>
+          <td class="small" data-label="Résiliation">
+            {% if status.hamon_available %}
+              <span class="pill info">à tout moment</span>
+            {% elif status.days_to_deadline is not none and status.days_to_deadline < 0 %}
+              <span class="pill">préavis dépassé · {{ status.notice_deadline | date_fr('%d/%m') }}</span>
+            {% elif status.notice_deadline %}
+              <span class="pill {{ status.level if status.level != 'ok' else '' }}">avant le {{ status.notice_deadline | date_fr('%d/%m') }}</span>
+            {% else %}<span class="mute">—</span>{% endif %}
+          </td>
+          <td data-label=""><a class="btn ghost sm" href="{{ url_for('contract_detail', contract_id=status.contract.id) }}">Ouvrir</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8"><div class="empty"><div class="big">◐</div>Aucun contrat enregistré.<br>
+          Ajoutez vos contrats pour ne plus jamais rater une fenêtre de résiliation.</div></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<details class="disclose card" style="margin-top:16px">
+  <summary>Repères de résiliation</summary>
+  <div class="small dim">
+    <p><strong>Préavis</strong> : la plupart des contrats se résilient au plus tard deux mois avant l'échéance annuelle. La date limite affichée applique le préavis que vous avez saisi.</p>
+    <p><strong>Loi Chatel</strong> : l'assureur doit vous rappeler cette date limite au plus tard 15 jours avant. S'il vous prévient trop tard, vous disposez de 20 jours supplémentaires à compter de l'envoi de son avis.</p>
+    <p><strong>Loi Hamon</strong> : passé un an de contrat, l'auto, l'habitation et les contrats affinitaires se résilient à tout moment, sans frais ni justificatif.</p>
+    <p class="tiny">Ces repères sont informatifs : vérifiez toujours les conditions générales de votre contrat.</p>
+  </div>
+</details>
+{% endblock %}

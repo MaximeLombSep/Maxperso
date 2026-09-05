@@ -1,0 +1,30 @@
+# Image autonome, pour docker compose sur un PC ou un serveur.
+# Home Assistant, lui, construit `Dockerfile` à partir de sa propre base.
+FROM python:3.11-slim AS base
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    BUDGET_DATA_DIR=/data
+
+WORKDIR /srv/enveloppe
+
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY app ./app
+
+# L'application ne tourne pas en root : le volume de données lui appartient.
+RUN useradd --system --create-home --uid 10001 enveloppe \
+    && mkdir -p /data \
+    && chown -R enveloppe:enveloppe /data /srv/enveloppe
+USER enveloppe
+
+EXPOSE 8099
+VOLUME ["/data"]
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8099/health', timeout=3).status == 200 else 1)"
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8099", \
+     "--proxy-headers", "--forwarded-allow-ips", "*"]

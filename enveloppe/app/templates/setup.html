@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Installation — Enveloppe</title>
+<link rel="stylesheet" href="{{ url_for('static', path='/css/app.css') }}">
+<script src="{{ url_for('static', path='/js/theme.js') }}"></script>
+</head>
+<body>
+<div class="auth-page">
+  <form class="auth-card" method="post" action="{{ url_for('setup_submit') }}">
+    <div class="brand"><span class="mark">✉</span> Enveloppe</div>
+    <h1>Première installation</h1>
+    <p class="page-sub">Ce compte protège l'accès à vos données bancaires. Choisissez un mot de passe long, unique, et conservez-le dans votre gestionnaire de mots de passe.</p>
+
+    {% if problems %}
+    <div class="alert critical" style="margin-bottom:16px">
+      <span class="ico">⚠</span>
+      <div>{% for problem in problems %}{{ problem }} {% endfor %}</div>
+    </div>
+    {% endif %}
+
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="grid" style="gap:13px">
+      <div class="field">
+        <label for="username">Identifiant</label>
+        <input id="username" name="username" type="text" autocomplete="username" required autofocus>
+      </div>
+      <div class="field">
+        <label for="password">Mot de passe (12 caractères minimum)</label>
+        <input id="password" name="password" type="password" autocomplete="new-password" required minlength="12">
+      </div>
+      <div class="field">
+        <label for="password_confirm">Confirmation</label>
+        <input id="password_confirm" name="password_confirm" type="password" autocomplete="new-password" required minlength="12">
+      </div>
+      <button class="btn primary block" type="submit">Créer le compte et démarrer</button>
+    </div>
+    <p class="tiny mute" style="margin-top:16px">Un jeu d'enveloppes et de règles de catégorisation adaptées aux libellés bancaires français sera créé automatiquement. Tout reste modifiable.</p>
+  </form>
+</div>
+</body>
+</html>

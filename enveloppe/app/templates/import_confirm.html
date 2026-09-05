@@ -1,0 +1,255 @@
+{% extends "base.html" %}
+{% block title %}Vérification de l'import — Enveloppe{% endblock %}
+{% block content %}
+
+<div class="topbar">
+  <div>
+    <h1>Vérification avant import</h1>
+    <div class="page-sub">{{ filename }} → {{ account.name }}</div>
+  </div>
+  <div class="grow"></div>
+  <a class="btn ghost" href="{{ url_for('import_form') }}">Annuler</a>
+</div>
+
+<form method="post" action="{{ url_for('import_confirm') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="account_id" value="{{ account.id }}">
+  <input type="hidden" name="token" value="{{ token }}">
+  <input type="hidden" name="filename" value="{{ filename }}">
+  <input type="hidden" name="mode" value="{{ mode }}">
+
+  {% if mode == 'pdf' %}
+  <div class="card">
+    <div class="card-head">
+      <h2>{{ parsed_count }} opération(s) lue(s)</h2>
+      <span class="pill {{ 'pos' if pdf.columns == 'debit_credit' else 'warn' }}">
+        {{ 'colonnes débit / crédit détectées' if pdf.columns == 'debit_credit' else 'colonne unique' }}
+      </span>
+      {% if pdf.period_start %}<span class="pill">du {{ pdf.period_start | date_fr }} au {{ pdf.period_end | date_fr }}</span>{% endif %}
+    </div>
+
+    <div class="alert warning">
+      <span class="ico">⚠</span>
+      <div>
+        <strong>Un PDF est une mise en page, pas un format d'échange.</strong>
+        La lecture reste une interprétation : comparez les totaux ci-dessous avec
+        ceux de votre relevé avant d'importer. Quand votre banque propose un
+        export CSV ou OFX, préférez-le.
+      </div>
+    </div>
+
+    <div class="grid g3" style="margin:16px 0">
+      <div class="kpi"><span class="label">Total des débits</span><span class="value num neg">{{ pdf.debit_cents | money }}</span></div>
+      <div class="kpi"><span class="label">Total des crédits</span><span class="value num pos">{{ pdf.credit_cents | money }}</span></div>
+      <div class="kpi"><span class="label">Solde du relevé lu</span><span class="value num">{{ pdf.total_cents | money }}</span></div>
+    </div>
+
+    {% if pdf.columns != 'debit_credit' %}
+    <label class="check" style="margin-bottom:12px">
+      <input type="checkbox" name="unsigned_as_debit" value="1" checked>
+      Les montants sans signe sont des <strong>débits</strong> (décochez si ce sont des crédits)
+    </label>
+    {% else %}
+    <input type="hidden" name="unsigned_as_debit" value="1">
+    {% endif %}
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Date</th><th>Libellé</th><th class="amount">Montant</th></tr></thead>
+        <tbody>
+          {% for item in parsed %}
+          <tr>
+            <td class="nowrap small">{{ item.op_date | date_fr }}</td>
+            <td class="truncate" style="max-width:520px">{{ item.label }}</td>
+            <td class="amount num {{ 'neg' if item.amount_cents < 0 else 'pos' }}">{{ item.amount_cents | money }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if parsed_count > parsed | length %}
+    <p class="tiny mute" style="margin-top:10px">… et {{ parsed_count - (parsed | length) }} autres.</p>
+    {% endif %}
+
+    {% if pdf.card_blocks %}
+    <div class="alert info" style="margin-top:16px">
+      <span class="ico">▤</span>
+      <div class="grow">
+        <strong>{{ pdf.card_blocks | length }} carte(s) à débit différé détectée(s) dans ce relevé.</strong>
+        Le relevé date ces achats du jour du prélèvement ; ils sont ramenés à leur
+        date réelle d'achat (mention « FACT »), et le prélèvement global sera
+        rapproché pour ne pas compter deux fois.
+      </div>
+    </div>
+
+    <div class="table-wrap" style="margin-top:12px">
+      <table class="stack">
+        <thead><tr>
+          <th>Carte</th><th>Prélèvement</th><th class="amount">Montant annoncé</th>
+          <th class="amount">Détail lu</th><th class="amount">Achats</th><th>Destination</th>
+        </tr></thead>
+        <tbody>
+          {% for block in pdf.card_blocks %}
+          <tr>
+            <td data-label=""><span class="strong">{{ block.label }}</span></td>
+            <td data-label="Prélèvement" class="small">{{ block.settlement_on | date_fr }}</td>
+            <td data-label="Annoncé" class="amount num strong">{{ block.announced_cents | money }}</td>
+            <td data-label="Détail lu" class="amount num {{ 'pos' if block.matches else 'neg' }}">
+              {{ (-block.parsed_cents) | money }}
+              {% if block.matches %}<span class="pill pos">concorde</span>{% else %}<span class="pill neg">écart</span>{% endif %}
+            </td>
+            <td data-label="Achats" class="amount num dim">{{ block.purchases | length }}</td>
+            <td data-label="Destination">
+              <select name="card_target_{{ loop.index0 }}" aria-label="Compte de la carte">
+                <option value="new">Créer la carte n° {{ block.card_number }}</option>
+                {% for card in card_accounts %}
+                <option value="{{ card.id }}">{{ card.name }}</option>
+                {% endfor %}
+                <option value="">Ne pas séparer (tout sur le compte)</option>
+              </select>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+
+    <details class="disclose" style="margin-top:12px">
+      <summary>Texte brut extrait du PDF</summary>
+      <div><pre class="tiny mute" style="overflow-x:auto;white-space:pre">{% for line in pdf.sample_lines %}{{ line }}
+{% endfor %}</pre></div>
+    </details>
+  </div>
+
+  {% elif mode == 'ofx' %}
+  <div class="card">
+    <div class="card-head"><h2>{{ parsed_count }} opération(s) lue(s)</h2><span class="pill pos">format OFX</span></div>
+    <p class="small dim">Le format OFX fournit un identifiant unique par opération : les réimports du même relevé ne créeront aucun doublon.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Date</th><th>Libellé</th><th class="amount">Montant</th></tr></thead>
+        <tbody>
+          {% for item in parsed %}
+          <tr>
+            <td class="nowrap small">{{ item.op_date | date_fr }}</td>
+            <td class="truncate">{{ item.label }}</td>
+            <td class="amount num {{ 'neg' if item.amount_cents < 0 else 'pos' }}">{{ item.amount_cents | money }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if parsed_count > parsed | length %}
+    <p class="tiny mute" style="margin-top:10px">… et {{ parsed_count - (parsed | length) }} autres.</p>
+    {% endif %}
+  </div>
+
+  {% else %}
+  <div class="card">
+    <div class="card-head">
+      <h2>Lecture du fichier</h2>
+      <span class="pill">{{ preview.encoding }}</span>
+      <span class="pill">séparateur « {{ preview.delimiter if preview.delimiter != '\t' else 'tabulation' }} »</span>
+    </div>
+    <p class="small dim">Ces réglages ont été détectés automatiquement. Corrigez-les si l'aperçu ci-dessous est incohérent.</p>
+
+    <div class="form-grid">
+      <div class="field"><label for="delimiter">Séparateur</label>
+        <select id="delimiter" name="delimiter">
+          <option value=";" {{ 'selected' if profile.delimiter == ';' }}>Point-virgule ;</option>
+          <option value="," {{ 'selected' if profile.delimiter == ',' }}>Virgule ,</option>
+          <option value="\t" {{ 'selected' if profile.delimiter == '\t' }}>Tabulation</option>
+          <option value="|" {{ 'selected' if profile.delimiter == '|' }}>Barre |</option>
+        </select></div>
+      <div class="field"><label for="encoding">Encodage</label>
+        <select id="encoding" name="encoding">
+          {% for enc in ['utf-8-sig', 'utf-8', 'cp1252', 'latin-1'] %}
+          <option value="{{ enc }}" {{ 'selected' if profile.encoding == enc }}>{{ enc }}</option>
+          {% endfor %}
+        </select></div>
+      <div class="field"><label for="date_format">Format de date</label>
+        <select id="date_format" name="date_format">
+          {% for fmt, label in [('%d/%m/%Y','31/12/2025'), ('%d/%m/%y','31/12/25'), ('%Y-%m-%d','2025-12-31'), ('%d-%m-%Y','31-12-2025'), ('%d.%m.%Y','31.12.2025')] %}
+          <option value="{{ fmt }}" {{ 'selected' if profile.date_format == fmt }}>{{ label }}</option>
+          {% endfor %}
+        </select></div>
+      <div class="field"><label for="decimal_sep">Séparateur décimal</label>
+        <select id="decimal_sep" name="decimal_sep">
+          <option value="," {{ 'selected' if profile.decimal_sep == ',' }}>Virgule (1 234,56)</option>
+          <option value="." {{ 'selected' if profile.decimal_sep == '.' }}>Point (1,234.56)</option>
+        </select></div>
+      <div class="field"><label for="skip_rows">Ligne d'en-tête (0 = première ligne)</label>
+        <input id="skip_rows" name="skip_rows" type="number" min="0" value="{{ profile.skip_rows }}"></div>
+      <div class="field"><label for="amount_mode">Colonnes de montant</label>
+        <select id="amount_mode" name="amount_mode">
+          <option value="single" {{ 'selected' if profile.amount_mode == 'single' }}>Une colonne signée</option>
+          <option value="debit_credit" {{ 'selected' if profile.amount_mode == 'debit_credit' }}>Débit / Crédit séparés</option>
+        </select></div>
+    </div>
+
+    <div class="form-grid" style="margin-top:14px">
+      {% set columns = [('col_date','Date d\'opération', profile.col_date), ('col_label','Libellé', profile.col_label), ('col_amount','Montant', profile.col_amount), ('col_debit','Débit', profile.col_debit), ('col_credit','Crédit', profile.col_credit), ('col_value_date','Date de valeur', profile.col_value_date)] %}
+      {% for field, label, value in columns %}
+      <div class="field"><label for="{{ field }}">{{ label }}</label>
+        <select id="{{ field }}" name="{{ field }}">
+          <option value="">— aucune —</option>
+          {% for header in preview.headers %}
+          <option value="{{ header }}" {{ 'selected' if value == header }}>{{ header }}</option>
+          {% endfor %}
+        </select></div>
+      {% endfor %}
+      <div class="field">
+        <label class="check" style="margin-top:22px"><input type="checkbox" name="invert_sign" {{ 'checked' if profile.invert_sign }}> Inverser le signe des montants</label>
+      </div>
+      <div class="field"><label for="save_profile_as">Enregistrer ce profil sous</label>
+        <input id="save_profile_as" name="save_profile_as" type="text" placeholder="Ex. Crédit Agricole — compte joint">
+        <span class="tiny mute">Laissez vide pour un import ponctuel.</span></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>Aperçu du fichier</h2></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>{% for header in preview.headers %}<th>{{ header }}</th>{% endfor %}</tr></thead>
+        <tbody>
+          {% for row in preview.sample %}
+          <tr>{% for cell in row %}<td class="small truncate" style="max-width:220px">{{ cell }}</td>{% endfor %}</tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if errors %}
+  <div class="alert warning" style="margin-top:16px">
+    <span class="ico">⚠</span>
+    <div><strong>{{ errors | length }} ligne(s) illisible(s)</strong> seront ignorées :
+      <ul class="small" style="margin:6px 0 0 16px">{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="card" style="margin-top:16px">
+    <div class="card-head"><h2>Doublons</h2></div>
+    <p class="small dim">
+      Une opération déjà présente est écartée automatiquement : soit son empreinte
+      exacte est connue (réimport du même relevé), soit elle recopie une opération
+      existante de même montant, à quelques jours près, au libellé très proche —
+      le cas du PDF importé après le CSV du même mois. Les écartées sont listées
+      après l'import, jamais supprimées en silence.
+    </p>
+    <label class="check">
+      <input type="checkbox" name="allow_near_duplicates" value="1">
+      Insérer malgré tout les quasi-doublons (deux dépenses identiques réellement distinctes)
+    </label>
+  </div>
+
+  <div class="form-actions">
+    <a class="btn ghost" href="{{ url_for('import_form') }}">Annuler</a>
+    <button class="btn primary" type="submit">Importer dans {{ account.name }}</button>
+  </div>
+</form>
+{% endblock %}

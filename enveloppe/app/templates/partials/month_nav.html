@@ -1,0 +1,6 @@
+{# Sélecteur de mois — `endpoint` est le nom de la route à recharger. #}
+<div class="month-nav">
+  <a href="{{ url_for(endpoint).include_query_params(period=prev_period) }}" title="Mois précédent">‹</a>
+  <span class="current">{{ period_label(period) }}</span>
+  <a href="{{ url_for(endpoint).include_query_params(period=next_period) }}" title="Mois suivant">›</a>
+</div>

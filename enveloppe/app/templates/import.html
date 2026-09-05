@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Import — Enveloppe{% endblock %}
+{% block content %}
+
+<div class="topbar">
+  <div>
+    <h1>Importer un relevé</h1>
+    <div class="page-sub">Aucune connexion à votre banque : vous déposez l'export que vous avez téléchargé vous-même.</div>
+  </div>
+</div>
+
+<div class="grid g-2-1">
+  <form class="card" method="post" action="{{ url_for('import_preview') }}" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="card-head"><h2>Fichier à importer</h2></div>
+
+    <div class="form-grid cols-2">
+      <div class="field">
+        <label for="account_id">Compte concerné</label>
+        <select id="account_id" name="account_id" required>
+          {% for account in accounts %}
+          <option value="{{ account.id }}">{{ account.name }}{% if account.institution %} — {{ account.institution }}{% endif %}</option>
+          {% else %}
+          <option value="">Créez d'abord un compte</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="profile_id">Profil de lecture (facultatif)</label>
+        <select id="profile_id" name="profile_id">
+          <option value="">Détection automatique</option>
+          {% for profile in profiles %}<option value="{{ profile.id }}">{{ profile.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field full">
+        <label for="upload">Fichier CSV, OFX/QFX ou PDF (20 Mo maximum)</label>
+        <input id="upload" name="upload" type="file" accept=".csv,.txt,.ofx,.qfx,.pdf" required>
+        <span class="tiny mute">Le PDF est accepté quand la banque ne propose rien d'autre : sa lecture est une interprétation de la mise en page, à vérifier avant insertion.</span>
+      </div>
+    </div>
+
+    <div class="form-actions">
+      <button class="btn primary" type="submit">Analyser le fichier</button>
+    </div>
+
+    <details class="disclose" style="margin-top:8px">
+      <summary>Où trouver cet export chez ma banque ?</summary>
+      <div class="small dim">
+        <p>Dans votre espace bancaire, cherchez « Télécharger mes opérations », « Exporter », ou l'icône de téléchargement au-dessus de la liste des opérations. Choisissez le format <strong>OFX</strong> s'il est proposé (il contient un identifiant unique par opération, ce qui supprime tout risque de doublon), sinon le <strong>CSV</strong>.</p>
+        <p>Le <strong>PDF</strong> du relevé fonctionne aussi, en dernier recours : les colonnes débit/crédit sont retrouvées par leur position, les totaux vous sont affichés avant insertion, et un PDF scanné (image sans texte) est refusé plutôt que mal lu.</p>
+        <p>Exportez une période large la première fois (12 à 24 mois) : l'historique sert à calculer vos moyennes, votre fonds de sécurité et les pistes d'économies. Les imports suivants peuvent se limiter au dernier mois, les doublons sont écartés automatiquement.</p>
+      </div>
+    </details>
+  </form>
+
+  <div>
+    {% if profiles %}
+    <div class="card">
+      <div class="card-head"><h2>Profils enregistrés</h2></div>
+      <div class="list">
+        {% for profile in profiles %}
+        <div class="list-item">
+          <div class="grow">
+            <div class="strong">{{ profile.name }}</div>
+            <div class="tiny mute">{{ profile.encoding }} · séparateur « {{ profile.delimiter }} » · dates {{ profile.date_format }}</div>
+          </div>
+          <form method="post" action="{{ url_for('profile_delete', profile_id=profile.id) }}" data-confirm="Supprimer ce profil de lecture ?">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="btn ghost sm" type="submit">✕</button>
+          </form>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="card">
+      <div class="card-head"><h2>Derniers imports</h2></div>
+      <div class="list">
+        {% for batch in batches %}
+        <div class="list-item">
+          <div class="grow">
+            <div class="strong truncate">{{ batch.filename }}</div>
+            <div class="tiny mute">{{ batch.imported_at | date_fr('%d/%m/%Y %H:%M') }} · {{ batch.account.name if batch.account }}</div>
+          </div>
+          <div class="right">
+            <div class="num small pos">+{{ batch.inserted }}</div>
+            <div class="tiny mute">{{ batch.duplicates }} doublon(s)</div>
+          </div>
+        </div>
+        {% else %}
+        <div class="empty">Aucun import pour l'instant.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
