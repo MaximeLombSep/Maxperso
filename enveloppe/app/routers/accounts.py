@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import io
+from datetime import date
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse, StreamingResponse
@@ -23,6 +24,7 @@ from ..security import (
     verify_password,
 )
 from ..services import cards as cards_service
+from ..services import reconcile as reconcile_service
 from ..services import savings as savings_service
 from ..services.budget import account_balances
 from ..services.money import euros_to_cents, format_cents
@@ -274,4 +276,119 @@ def batch_rollback(
     db.commit()
 
     flash(response, f"Import annulé : {removed} opération(s) supprimée(s).")
+    return response
+
+
+# --------------------------------------------------------------------------
+# Rapprochement bancaire
+# --------------------------------------------------------------------------
+
+
+@router.get(
+    "/comptes/{account_id}/rapprochement", name="reconcile_page"
+)
+def reconcile_page(
+    request: Request, account_id: int, db: Session = Depends(get_session)
+):
+    account = db.get(Account, account_id)
+    if account is None:
+        raise HTTPException(status_code=404, detail="Compte introuvable.")
+
+    return render(
+        request,
+        "reconcile.html",
+        active="accounts",
+        account=account,
+        state=reconcile_service.state_of(db, account),
+        today=date.today(),
+    )
+
+
+@router.post(
+    "/comptes/{account_id}/rapprochement",
+    name="reconcile_apply",
+    dependencies=[Depends(csrf_guard)],
+)
+async def reconcile_apply(
+    request: Request, account_id: int, db: Session = Depends(get_session)
+):
+    """Pointe les opérations cochées, puis clôt si l'écart est nul.
+
+    L'ajustement n'est jamais créé d'office : il faut l'avoir demandé, parce
+    qu'il écrit une opération qui n'existe sur aucun relevé.
+    """
+    account = db.get(Account, account_id)
+    if account is None:
+        raise HTTPException(status_code=404, detail="Compte introuvable.")
+
+    form = await request.form()
+    ids: set[int] = set()
+    for raw in form.getlist("cleared"):
+        try:
+            ids.add(int(raw))
+        except (TypeError, ValueError):
+            continue
+
+    pointees = reconcile_service.mark_cleared(db, account, ids)
+    statement = euros_to_cents(str(form.get("statement", "0")))
+    state = reconcile_service.state_of(db, account)
+    gap = state.gap(statement)
+
+    response = RedirectResponse(
+        path_for(request, "reconcile_page", account_id=account.id), status_code=303
+    )
+
+    if gap and form.get("adjust") == "on":
+        reconcile_service.create_adjustment(db, account, gap)
+        reconcile_service.close(db, account, statement)
+        flash(
+            response,
+            f"{pointees} opération(s) pointée(s), et un ajustement de "
+            f"{format_cents(gap)} écrit pour solder l'écart. Rapprochement clos.",
+        )
+        return response
+
+    if gap:
+        flash(
+            response,
+            f"{pointees} opération(s) pointée(s). Il reste {format_cents(gap)} "
+            "d'écart : cherchez l'opération manquante, ou demandez l'ajustement.",
+            "error",
+        )
+        return response
+
+    reconcile_service.close(db, account, statement)
+    flash(
+        response,
+        f"{pointees} opération(s) pointée(s). Solde conforme au relevé, "
+        "rapprochement clos.",
+    )
+    return response
+
+
+@router.post(
+    "/comptes/{account_id}/depointer",
+    name="reconcile_unmark",
+    dependencies=[Depends(csrf_guard)],
+)
+async def reconcile_unmark(
+    request: Request, account_id: int, db: Session = Depends(get_session)
+):
+    account = db.get(Account, account_id)
+    if account is None:
+        raise HTTPException(status_code=404, detail="Compte introuvable.")
+
+    form = await request.form()
+    ids: set[int] = set()
+    for raw in form.getlist("transaction_id"):
+        try:
+            ids.add(int(raw))
+        except (TypeError, ValueError):
+            continue
+
+    count = reconcile_service.unmark_cleared(db, account, ids)
+    response = RedirectResponse(
+        path_for(request, "reconcile_page", account_id=account.id), status_code=303
+    )
+    flash(response, f"{count} opération(s) dépointée(s).")
     return response

@@ -57,10 +57,15 @@
           <td class="small dim" data-label="Établissement">{{ account.institution or '—' }}</td>
           <td class="amount num dim" data-label="Opérations">{{ counts.get(account.id, 0) }}</td>
           <td class="amount num strong {{ 'neg' if balances.get(account.id, 0) < 0 }}" data-label="Solde">{{ balances.get(account.id, 0) | money }}
+            {% if account.reconciled_on %}<div class="tiny mute">rapproché le {{ account.reconciled_on | date_fr('%d/%m') }}</div>{% endif %}
             {% if account.kind == 'credit' %}<span class="tiny mute">encours</span>{% endif %}</td>
           <td class="amount num {{ 'neg' if projected.get(account.id, 0) < 0 }}" data-label="Après encours">
             {% if projected.get(account.id, 0) != balances.get(account.id, 0) %}{{ projected.get(account.id, 0) | money }}{% else %}<span class="mute">—</span>{% endif %}</td>
-          <td data-label=""><button class="btn ghost sm" type="button" data-toggle="#acc-{{ account.id }}">Modifier</button></td>
+          <td data-label="" class="nowrap">
+            <a class="btn ghost sm" href="{{ url_for('reconcile_page', account_id=account.id) }}"
+               title="Confronter ce compte à votre relevé">⇌ Rapprocher</a>
+            <button class="btn ghost sm" type="button" data-toggle="#acc-{{ account.id }}">Modifier</button>
+          </td>
         </tr>
         <tr id="acc-{{ account.id }}" class="hidden">
           <td colspan="7" style="background:var(--surface-2)">

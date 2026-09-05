@@ -16,6 +16,7 @@ from ..services.budget import (
     absorb_overspend,
     autofill_month,
     current_period,
+    fund_targets,
     month_summary,
     move_between,
     set_absorb_overspend,
@@ -78,13 +79,31 @@ def update_allocation(payload: dict = Body(...), db: Session = Depends(get_sessi
     state = next(
         (s for s in summary.envelopes if s.envelope.id == envelope_id), None
     )
+    to_budget_label = (
+        "Tout est affecté"
+        if summary.to_budget == 0
+        else "Affectés en trop"
+        if summary.to_budget < 0
+        else "Reste à répartir"
+    )
     return JSONResponse(
         {
             "allocated": format_cents(cents),
             "available": format_cents(state.available if state else 0),
             "available_cents": state.available if state else 0,
+            "funding": state.funding if state else "none",
+            "missing": format_cents(state.missing) if state else "",
+            "missing_cents": state.missing if state else 0,
             "to_budget": format_cents(summary.to_budget),
             "to_budget_cents": summary.to_budget,
+            "to_budget_label": to_budget_label,
+            "to_budget_state": (
+                "zero"
+                if summary.to_budget == 0
+                else "over"
+                if summary.to_budget < 0
+                else "ready"
+            ),
         }
     )
 
@@ -391,4 +410,27 @@ def toggle_absorb(
         if enabled
         else "Un dépassement restera dans l'enveloppe, en négatif.",
     )
+    return response
+
+
+@router.post(
+    "/budget/objectifs", name="fund_targets_action", dependencies=[Depends(csrf_guard)]
+)
+def fund_targets_action(
+    request: Request, period: str = Form(...), db: Session = Depends(get_session)
+):
+    """Couvre d'un geste tout ce qui manque pour tenir les objectifs du mois."""
+    served, total = fund_targets(db, period)
+    response = RedirectResponse(
+        path_for(request, "budget_page").include_query_params(period=period),
+        status_code=303,
+    )
+    if served:
+        flash(
+            response,
+            f"{format_cents(total)} affectés sur {served} enveloppe(s). "
+            "Vérifiez le reste à budgéter avant de valider.",
+        )
+    else:
+        flash(response, "Tous les objectifs du mois sont déjà couverts.", "info")
     return response

@@ -671,3 +671,69 @@ details.disclose > div { padding-top: 14px; }
 .suggestion .who strong { display: block; }
 .suggestion .act { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .suggestion .act select { flex: 1 1 150px; min-width: 0; }
+
+/* ----- Bandeau « reste à budgéter » ------------------------------------- */
+/* L'état compte autant que le montant : on doit savoir en un regard s'il
+   faut répartir, arbitrer, ou ne rien faire. */
+
+.assign {
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: #fff;
+}
+.assign.ready { background: linear-gradient(135deg, var(--accent), var(--accent-2)); }
+.assign.zero  { background: linear-gradient(135deg, var(--pos), #22c55e); }
+.assign.over  { background: linear-gradient(135deg, var(--neg), #f97316); }
+
+.assign-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.assign-amount { font-size: 2rem; font-weight: 680; letter-spacing: -.03em; }
+.assign-state {
+  font-size: .78rem; text-transform: uppercase; letter-spacing: .08em;
+  font-weight: 700; color: rgba(255, 255, 255, .85);
+}
+.assign-hint { font-size: .84rem; color: rgba(255, 255, 255, .88); margin: 0; }
+.assign-btn {
+  align-self: flex-start;
+  background: rgba(255, 255, 255, .16);
+  border-color: rgba(255, 255, 255, .35);
+  color: #fff;
+}
+.assign-btn:hover { background: rgba(255, 255, 255, .26); }
+
+/* ----- Pastille de disponibilité ---------------------------------------- */
+
+.avail-pill {
+  display: inline-flex; justify-content: flex-end; min-width: 84px;
+  padding: 3px 10px; border-radius: 99px;
+  font-variant-numeric: tabular-nums; font-weight: 640; font-size: .87rem;
+}
+.avail-pill.funded     { background: var(--pos-soft); color: var(--pos); }
+.avail-pill.underfunded{ background: var(--warn-soft); color: var(--warn); }
+.avail-pill.overspent  { background: var(--neg-soft); color: var(--neg); }
+.avail-pill.none       { background: var(--surface-3); color: var(--text-mute); }
+.avail-pill.income     { background: transparent; color: var(--text-mute); }
+
+.missing { color: var(--warn); font-weight: 600; }
+
+details.env-group > summary { cursor: pointer; list-style: none; }
+details.env-group > summary::-webkit-details-marker { display: none; }
+details.env-group > summary::before {
+  content: "▾"; margin-right: 6px; font-size: .7rem; color: var(--text-mute);
+  transition: transform .15s ease; display: inline-block;
+}
+details.env-group:not([open]) > summary::before { transform: rotate(-90deg); }
+
+/* Outils du budget : sous le bandeau d'état, jamais devant lui. */
+.toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+.toolbar-fill { display: flex; gap: 8px; flex: 1 1 auto; min-width: 0; }
+.toolbar-fill select { flex: 1 1 auto; min-width: 0; }
+
+/* ----- Rapprochement ---------------------------------------------------- */
+
+.recon-row { cursor: pointer; gap: 10px; }
+.recon-row input[type="checkbox"] { width: 20px; height: 20px; flex: none; }
+.check-line { display: flex; align-items: center; gap: 10px; font-size: .9rem; }
+.check-line input[type="checkbox"] { width: 18px; height: 18px; flex: none; }

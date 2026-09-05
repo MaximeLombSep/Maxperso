@@ -79,6 +79,10 @@ class Account(Base):
     )
     cutoff_day: Mapped[int] = mapped_column(Integer, default=0)
     settlement_day: Mapped[int] = mapped_column(Integer, default=0)
+    # Dernier rapprochement : date et solde constaté sur le relevé. Sert de
+    # repère — au-delà, les opérations pointées sont considérées vérifiées.
+    reconciled_on: Mapped[date | None] = mapped_column(Date, default=None)
+    reconciled_balance_cents: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     transactions: Mapped[list["Transaction"]] = relationship(
@@ -235,6 +239,9 @@ class Transaction(Base):
         ForeignKey("import_batches.id", ondelete="SET NULL"), default=None
     )
     reviewed: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Pointée : retrouvée sur le relevé de la banque. C'est ce qui distingue
+    # « la banque le confirme » de « je l'ai saisi ».
+    cleared: Mapped[bool] = mapped_column(Boolean, default=False)
     # Achat de carte différée déjà réglé : pointe le prélèvement qui l'a soldé.
     settlement_id: Mapped[int | None] = mapped_column(
         ForeignKey("transactions.id", ondelete="SET NULL"), default=None

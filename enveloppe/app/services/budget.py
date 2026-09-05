@@ -115,6 +115,38 @@ class EnvelopeState:
     def overspent(self) -> bool:
         return self.available < 0
 
+    @property
+    def missing(self) -> int:
+        """Ce qu'il reste à doter ce mois-ci pour tenir l'objectif.
+
+        Une enveloppe mensuelle veut sa dotation prévue ; une enveloppe à
+        recompléter veut revenir à son montant ; une provision veut sa part
+        du mois. Zéro dès que l'objectif est atteint.
+        """
+        if self.envelope.kind == "income":
+            return 0
+        if self.envelope.kind == "monthly":
+            return max(self.planned - self.allocated, 0)
+        return max(self.suggested, 0)
+
+    @property
+    def funding(self) -> str:
+        """État lisible d'un coup d'œil : rouge, orange, vert, ou rien.
+
+        C'est le signal qui pilote la routine du mois : ce qui est dans le
+        rouge se règle tout de suite, ce qui est orange attend d'être doté,
+        le vert se laisse tranquille.
+        """
+        if self.envelope.kind == "income":
+            return "income"
+        if self.available < 0:
+            return "overspent"
+        if self.missing > 0:
+            return "underfunded"
+        if self.planned or self.allocated or self.available:
+            return "funded"
+        return "none"
+
 
 @dataclass
 class GroupState:
@@ -145,6 +177,14 @@ class MonthSummary:
     available_total: int = 0
     uncategorized: int = 0
     absorbed: int = 0  # dépassements des mois passés, repris sur ce mois-ci
+
+    @property
+    def missing_total(self) -> int:
+        return sum(state.missing for state in self.envelopes)
+
+    @property
+    def overspent_count(self) -> int:
+        return sum(1 for state in self.envelopes if state.funding == "overspent")
 
     @property
     def label(self) -> str:
@@ -327,7 +367,15 @@ def month_summary(db: Session, period: str) -> MonthSummary:
             available=carry + allocated + month_activity,
             planned=envelope.planned_cents,
         )
-        state.suggested = suggested_allocation(envelope, period, state.available)
+        # Pour une enveloppe à recompléter, l'objectif se mesure sur ce qui a
+        # été mis dedans, pas sur ce qu'il en reste : dépenser en cours de
+        # mois ne doit pas redemander une dotation déjà faite.
+        base = (
+            state.carry_in + state.allocated
+            if envelope.kind == "refill"
+            else state.available
+        )
+        state.suggested = suggested_allocation(envelope, period, base)
         states[envelope.id] = state
 
     grouped: list[GroupState] = []
@@ -511,3 +559,23 @@ def account_balances(db: Session) -> dict[int, int]:
                 balances[account_id] += int(total or 0)
 
     return balances
+
+
+def fund_targets(db: Session, period: str) -> tuple[int, int]:
+    """Dote chaque enveloppe de ce qui lui manque pour tenir son objectif.
+
+    Le geste central du mois : plutôt que de remplir les cases une à une, on
+    demande à l'application de couvrir tous les objectifs, puis on arbitre
+    s'il ne reste pas assez. Retourne (enveloppes servies, total affecté).
+    """
+    summary = month_summary(db, period)
+    served = 0
+    total = 0
+    for state in summary.envelopes:
+        missing = state.missing
+        if missing <= 0:
+            continue
+        set_allocation(db, state.envelope.id, period, state.allocated + missing)
+        served += 1
+        total += missing
+    return served, total

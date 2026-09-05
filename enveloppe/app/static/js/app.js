@@ -96,13 +96,33 @@
             );
             if (available) {
               available.textContent = data.available;
-              available.classList.toggle("neg", data.available_cents < 0);
-              available.classList.toggle("pos", data.available_cents > 0);
+              ["funded", "underfunded", "overspent", "none", "income"].forEach(
+                function (name) { available.classList.remove(name); }
+              );
+              available.classList.add(data.funding || "none");
             }
+
+            // « Il manque X » doit disparaître dès que la dotation le couvre.
+            var missing = document.querySelector(
+              '[data-missing="' + payload.envelope_id + '"]'
+            );
+            if (missing) {
+              missing.textContent = " · il manque " + data.missing;
+              missing.hidden = data.missing_cents <= 0;
+            }
+
             var toBudget = document.querySelector("[data-to-budget]");
             if (toBudget) {
               toBudget.textContent = data.to_budget;
-              toBudget.classList.toggle("neg", data.to_budget_cents < 0);
+            }
+            var banner = document.querySelector(".assign");
+            if (banner) {
+              ["ready", "zero", "over"].forEach(function (name) {
+                banner.classList.remove(name);
+              });
+              banner.classList.add(data.to_budget_state);
+              var state = banner.querySelector(".assign-state");
+              if (state) state.textContent = data.to_budget_label;
             }
           })
           .catch(function () {
@@ -250,4 +270,21 @@
     initCover();
     initFilters();
   });
+
+  // ----- Rapprochement : cocher toute la liste d'un geste ------------------
+  document.addEventListener("click", function (event) {
+    var trigger = event.target.closest("[data-check-all]");
+    if (!trigger) return;
+    var list = document.querySelector(trigger.getAttribute("data-check-all"));
+    if (!list) return;
+    var boxes = list.querySelectorAll('input[type="checkbox"]');
+    var allChecked = Array.prototype.every.call(boxes, function (box) {
+      return box.checked;
+    });
+    Array.prototype.forEach.call(boxes, function (box) {
+      box.checked = !allChecked;
+    });
+    trigger.textContent = allChecked ? "Tout cocher" : "Tout décocher";
+  });
+
 })();

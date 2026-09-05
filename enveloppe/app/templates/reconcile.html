@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Rapprochement — {{ account.name }}{% endblock %}
+{% block content %}
+
+<div class="topbar">
+  <div>
+    <h1>Rapprochement</h1>
+    <div class="page-sub">{{ account.name }} — cochez les opérations que vous retrouvez sur votre relevé, puis saisissez le solde qu'il affiche.</div>
+  </div>
+  <div class="grow"></div>
+  <a class="btn" href="{{ url_for('accounts_page') }}">Retour aux comptes</a>
+</div>
+
+<div class="grid g3" style="margin-bottom:16px">
+  <div class="kpi">
+    <span class="label">Solde pointé</span>
+    <span class="value num">{{ state.cleared_cents | money }}</span>
+    <span class="hint">Ce que la banque devrait afficher</span>
+  </div>
+  <div class="kpi">
+    <span class="label">Non pointé</span>
+    <span class="value num {{ 'neg' if state.uncleared_cents < 0 else '' }}">{{ state.uncleared_cents | money }}</span>
+    <span class="hint">{{ state.uncleared_count }} opération{{ 's' if state.uncleared_count > 1 }} en attente</span>
+  </div>
+  <div class="kpi">
+    <span class="label">Solde de l'application</span>
+    <span class="value num">{{ state.book_cents | money }}</span>
+    <span class="hint">
+      {% if account.reconciled_on %}
+        Dernier rapprochement le {{ account.reconciled_on | date_fr }} à {{ account.reconciled_balance_cents | money }}
+      {% else %}
+        Jamais rapproché
+      {% endif %}
+    </span>
+  </div>
+</div>
+
+{% if not state.pending %}
+<div class="card">
+  <div class="card-head"><h2>Rien à pointer</h2></div>
+  <p class="small dim">Toutes les opérations de ce compte sont déjà pointées. Importez votre dernier relevé, ou revenez après le prochain.</p>
+</div>
+
+{% else %}
+
+<form method="post" action="{{ url_for('reconcile_apply', account_id=account.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+  <div class="card">
+    <div class="card-head">
+      <h2>Solde de votre relevé</h2>
+      <span class="pill">{{ today | date_fr }}</span>
+    </div>
+    <p class="small dim">Le dernier solde imprimé sur le relevé, ou celui affiché par votre application bancaire aujourd'hui. C'est la référence : l'application s'y compare, jamais l'inverse.</p>
+    <div class="form-grid">
+      <div class="field">
+        <label for="statement">Solde constaté</label>
+        <input id="statement" name="statement" type="text" inputmode="decimal"
+               placeholder="0,00" required autocomplete="off">
+        <span class="tiny mute">Négatif si le compte est à découvert. Ce champ reste vide exprès : recopiez le chiffre de la banque, sans regarder le nôtre.</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <h2>{{ state.pending | length }} opération{{ 's' if state.pending | length > 1 }} à pointer</h2>
+      <button class="btn sm ghost" type="button" data-check-all="#pending">Tout cocher</button>
+    </div>
+    <p class="small dim">Cochez celles qui figurent sur le relevé. Une opération non cochée reste en attente : elle n'a pas encore été vue par la banque, ou elle n'aurait pas dû être saisie.</p>
+
+    <div id="pending" class="list">
+      {% for tx in state.pending %}
+      <label class="list-item recon-row">
+        <input type="checkbox" name="cleared" value="{{ tx.id }}">
+        <span class="pill">{{ tx.op_date | date_fr('%d/%m') }}</span>
+        <span class="grow truncate">{{ tx.label }}</span>
+        <span class="num strong {{ 'neg' if tx.amount_cents < 0 else 'pos' }}">{{ tx.amount_cents | money }}</span>
+      </label>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>S'il reste un écart</h2></div>
+    <p class="small dim">
+      Un écart signale presque toujours une opération manquante ou saisie deux fois : cherchez-la d'abord. L'ajustement est le dernier recours — il écrit dans votre historique une opération qui ne figure sur aucun relevé, avec sa date, pour que l'écart reste lisible plutôt que masqué.
+    </p>
+    <label class="check-line">
+      <input type="checkbox" name="adjust">
+      <span>Écrire l'ajustement si un écart subsiste</span>
+    </label>
+    <div class="form-actions">
+      <button class="btn primary" type="submit">Valider le rapprochement</button>
+    </div>
+  </div>
+</form>
+
+{% endif %}
+
+{% endblock %}

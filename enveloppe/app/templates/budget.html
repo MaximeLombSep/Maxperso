@@ -9,18 +9,6 @@
   </div>
   <div class="grow"></div>
   {% with endpoint='budget_page' %}{% include "partials/month_nav.html" %}{% endwith %}
-  <form method="post" action="{{ url_for('autofill') }}" style="display:flex;gap:8px">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <input type="hidden" name="period" value="{{ period }}">
-    <select name="mode" aria-label="Mode de remplissage">
-      <option value="suggested">Dotation prévue</option>
-      <option value="last_month">Comme le mois dernier</option>
-      <option value="average3">Moyenne 3 mois</option>
-    </select>
-    <button class="btn" type="submit">Remplir les vides</button>
-  </form>
-  <button class="btn" type="button" data-toggle="#move-money">⇄ Déplacer de l'argent</button>
-  <a class="btn" href="{{ url_for('calibration_page') }}">◎ Calibrer</a>
 </div>
 
 <form id="move-money" class="card hidden" method="post" action="{{ url_for('move_money') }}">
@@ -52,6 +40,51 @@
     <button class="btn primary" type="submit">Déplacer</button>
   </div>
 </form>
+
+<div class="assign {{ 'zero' if summary.to_budget == 0 else 'over' if summary.to_budget < 0 else 'ready' }}" style="margin-bottom:16px">
+  <div class="assign-head">
+    <span class="assign-amount num" data-to-budget>{{ summary.to_budget | money }}</span>
+    <span class="assign-state">
+      {% if summary.to_budget == 0 %}Tout est affecté
+      {% elif summary.to_budget < 0 %}Affectés en trop
+      {% else %}Reste à répartir{% endif %}
+    </span>
+  </div>
+  <p class="assign-hint">
+    {% if summary.to_budget == 0 %}
+      Chaque euro encaissé a un rôle. C'est l'état visé à la fin de la répartition.
+    {% elif summary.to_budget < 0 %}
+      Vous avez affecté plus que ce qui est entré. Reprenez de l'argent dans une enveloppe plutôt que d'en fabriquer.
+    {% else %}
+      Cet argent n'a pas encore de rôle. Répartissez-le avant de dépenser.
+    {% endif %}
+    {% if summary.overspent_count %}
+      <br>{{ summary.overspent_count }} enveloppe{{ 's' if summary.overspent_count > 1 }} en dépassement à couvrir.
+    {% endif %}
+  </p>
+  {% if summary.missing_total %}
+  <form method="post" action="{{ url_for('fund_targets_action') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="period" value="{{ period }}">
+    <button class="btn assign-btn" type="submit">Doter ce qui manque — {{ summary.missing_total | money }}</button>
+  </form>
+  {% endif %}
+</div>
+
+<div class="toolbar">
+  <form method="post" action="{{ url_for('autofill') }}" class="toolbar-fill">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="period" value="{{ period }}">
+    <select name="mode" aria-label="Mode de remplissage">
+      <option value="suggested">Dotation prévue</option>
+      <option value="last_month">Comme le mois dernier</option>
+      <option value="average3">Moyenne 3 mois</option>
+    </select>
+    <button class="btn" type="submit">Remplir les vides</button>
+  </form>
+  <button class="btn" type="button" data-toggle="#move-money">⇄ Déplacer de l'argent</button>
+  <a class="btn" href="{{ url_for('calibration_page') }}">◎ Calibrer</a>
+</div>
 
 {% if summary.absorbed %}
 <div class="card">
@@ -90,12 +123,7 @@
 </div>
 {% endif %}
 
-<div class="grid g4" style="margin-bottom:16px">
-  <div class="kpi accent">
-    <span class="label">Reste à budgéter</span>
-    <span class="value num" data-to-budget>{{ summary.to_budget | money }}</span>
-    <span class="hint">Revenus encaissés moins dotations affectées</span>
-  </div>
+<div class="grid g3" style="margin-bottom:16px">
   <div class="kpi">
     <span class="label">Dotations du mois</span>
     <span class="value num">{{ summary.allocated | money }}</span>
@@ -128,12 +156,12 @@
   </div>
 
   {% for group in summary.groups %}
-  <div class="env-group">
-    <div class="env-group-head">
+  <details class="env-group" open>
+    <summary class="env-group-head">
       <span>{{ group.group.name if group.group else 'Sans groupe' }}</span>
       <span class="spacer"></span>
-      <span class="num">{{ group.allocated | money }} doté · {{ group.spent | money }} dépensé</span>
-    </div>
+      <span class="num">{{ group.allocated | money }} doté · {{ group.available | money }} disponible</span>
+    </summary>
 
     {% for state in group.envelopes %}
     <div class="env-row">
@@ -148,10 +176,14 @@
               {%- if state.suggested %} · conseillé {{ state.suggested | money }}{% endif %}
             {% elif state.envelope.kind == 'income' %}
               revenus
+            {% elif state.envelope.kind == 'refill' %}
+              à recompléter jusqu'à {{ state.planned | money }}
+              {%- if state.carry_in %} · report {{ state.carry_in | money }}{% endif %}
             {% else %}
               {% if state.carry_in %}report {{ state.carry_in | money }}{% else %}mensuel{% endif %}
               {%- if state.envelope.essential %} · essentiel{% endif %}
             {% endif %}
+            <span class="missing" data-missing="{{ state.envelope.id }}" {{ "hidden" if not state.missing }}> · il manque {{ state.missing | money }}</span>
           </div>
         </div>
       </div>
@@ -171,8 +203,9 @@
 
       <div class="num right cell-spent">{{ state.spent | money }}</div>
 
-      <div class="num env-available cell-avail {{ 'neg' if state.available < 0 else 'pos' if state.available > 0 else '' }}"
-           data-available="{{ state.envelope.id }}">{{ state.available | money }}</div>
+      <div class="cell-avail">
+        <span class="avail-pill {{ state.funding }}" data-available="{{ state.envelope.id }}">{{ state.available | money }}</span>
+      </div>
 
       <div class="cell-bar">
         {% if state.overspent %}
@@ -189,7 +222,7 @@
       {% endif %}
     </div>
     {% endfor %}
-  </div>
+  </details>
   {% else %}
   <div class="empty"><div class="big">✉</div>Aucune enveloppe. <a href="{{ url_for('envelopes_page') }}">Créez-en une</a>.</div>
   {% endfor %}
