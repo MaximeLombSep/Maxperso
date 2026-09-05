@@ -28,6 +28,14 @@ def savings_page(request: Request, db: Session = Depends(get_session)):
         active="savings",
         progress=progress,
         security=service.security_fund(db),
+        savings_hints=service.suggest_savings_accounts(db),
+        savings_accounts=list(
+            db.scalars(
+                select(Account).where(
+                    Account.kind == "savings", Account.archived.is_(False)
+                )
+            )
+        ),
         kinds=service.KIND_LABEL,
         accounts=list(
             db.scalars(
@@ -163,4 +171,29 @@ def contribution_delete(
         db.commit()
     response = RedirectResponse(path_for(request, "savings_page"), status_code=303)
     flash(response, "Versement supprimé.")
+    return response
+
+
+@router.post(
+    "/epargne/compte-detecte",
+    name="savings_account_declare",
+    dependencies=[Depends(csrf_guard)],
+)
+def savings_account_declare(
+    request: Request,
+    pattern: str = Form(...),
+    name: str = Form(...),
+    balance: str = Form("0"),
+    db: Session = Depends(get_session),
+):
+    """Déclare une épargne repérée dans les relevés et requalifie le passé."""
+    account, requalified = service.declare_savings_account(
+        db, pattern, name, euros_to_cents(balance)
+    )
+    response = RedirectResponse(path_for(request, "savings_page"), status_code=303)
+    flash(
+        response,
+        f"Compte « {account.name} » créé — {requalified} versement(s) requalifié(s) "
+        "en virement interne, et retirés de vos dépenses.",
+    )
     return response

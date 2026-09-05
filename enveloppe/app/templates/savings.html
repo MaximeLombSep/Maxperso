@@ -47,6 +47,47 @@
   </div>
 </div>
 
+{% if savings_hints %}
+<div class="card" style="margin-bottom:16px">
+  <div class="card-head">
+    <h2>Épargne repérée dans vos relevés</h2>
+    <span class="pill warn">{{ savings_hints | length }}</span>
+  </div>
+  <p class="small dim">
+    Ces versements partent vers une épargne qui n'est pas encore déclarée comme compte. Tant qu'elle ne l'est pas, ils sont comptés comme des <strong>dépenses</strong> : votre budget paraît plus lourd qu'il ne l'est, et votre épargne de sécurité paraît vide. Déclarer le compte les requalifie en virements internes, rétroactivement.
+  </p>
+  {% for hint in savings_hints %}
+  <form class="suggestion" method="post" action="{{ url_for('savings_account_declare') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="pattern" value="{{ hint.pattern }}">
+    <div class="who">
+      <strong class="truncate">{{ hint.suggested_name }}</strong>
+      <div class="tiny mute">
+        {{ hint.count }} versement{{ 's' if hint.count > 1 }} · {{ hint.total_cents | money_short }} au total ·
+        environ {{ hint.monthly_cents | money_short }} par mois
+      </div>
+    </div>
+    <div class="act">
+      <input name="name" type="text" value="{{ hint.suggested_name }}" aria-label="Nom du compte" required>
+      <input name="balance" type="text" inputmode="decimal" placeholder="Solde actuel" aria-label="Solde actuel du compte">
+      <button class="btn sm primary" type="submit">Déclarer</button>
+    </div>
+  </form>
+  {% endfor %}
+  <p class="tiny mute">Le solde est facultatif, mais sans lui l'épargne de sécurité partira de zéro : recopiez-le depuis votre application bancaire. C'est une photo à aujourd'hui — les versements suivants sortiront bien du compte courant, mais le solde du livret ne se mettra à jour que si vous importez aussi son relevé, ou si vous le corrigez depuis <a href="{{ url_for('accounts_page') }}">Comptes</a>.</p>
+</div>
+{% elif not savings_accounts %}
+<div class="card" style="margin-bottom:16px">
+  <div class="card-head"><h2>Aucun compte d'épargne déclaré</h2></div>
+  <p class="small dim">
+    L'épargne de sécurité affiche le solde de vos comptes d'épargne. Tant qu'aucun n'existe, elle reste à zéro même si vous mettez de l'argent de côté. Créez-les dans <a href="{{ url_for('accounts_page') }}">Comptes</a>, de type « Épargne », avec leur solde actuel — livret A, LDDS, PEL, assurance vie.
+  </p>
+  <div class="form-actions">
+    <a class="btn primary" href="{{ url_for('accounts_page') }}">Ajouter un compte d'épargne</a>
+  </div>
+</div>
+{% endif %}
+
 <form id="new-goal" class="card hidden" method="post" action="{{ url_for('goal_create') }}">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <div class="card-head"><h2>Nouvel objectif</h2></div>
