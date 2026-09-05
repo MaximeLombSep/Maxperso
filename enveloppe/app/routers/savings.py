@@ -175,7 +175,10 @@ def contribution_delete(
 
 
 @router.post(
-    "/epargne/compte-detecte",
+    # Deux segments, volontairement : « /epargne/xxx » est déjà pris par la
+    # mise à jour d'un objectif, qui attend un identifiant entier et
+    # capturerait ce chemin avant lui.
+    "/epargne/comptes/detecte",
     name="savings_account_declare",
     dependencies=[Depends(csrf_guard)],
 )
