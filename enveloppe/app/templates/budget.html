@@ -53,6 +53,16 @@
   </div>
 </form>
 
+{% if summary.absorbed %}
+<div class="card">
+  <div class="card-head">
+    <h2>Dépassement repris</h2>
+    <span class="pill warn">{{ summary.absorbed | money }}</span>
+  </div>
+  <p class="small dim">Les enveloppes qui ont fini dans le rouge les mois précédents sont reparties de zéro, et leur découvert est prélevé sur ce qui reste à budgéter ce mois-ci. C'est la troisième règle : on encaisse le coup au lieu de traîner la dette.</p>
+</div>
+{% endif %}
+
 {% if provisioned %}
 <div class="card">
   <p class="small"><strong>{{ provisioned }} enveloppe(s)</strong> viennent d'être dotées automatiquement depuis votre budget de référence. Ajustez librement : ce mois-ci ne sera plus retouché tout seul.</p>
@@ -195,4 +205,20 @@
     <p><strong>Provision</strong> : pour les échéances annuelles (assurances, impôts, vacances). La dotation conseillée étale la cible sur les mois restants jusqu'à la date d'échéance.</p>
   </div>
 </details>
+
+<div class="card">
+  <div class="card-head"><h2>Traitement des dépassements</h2></div>
+  <form method="post" action="{{ url_for('toggle_absorb') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    {% if absorb %}
+    <p class="small">Un dépassement est <strong>repris sur le reste à budgéter</strong> du mois suivant, et l'enveloppe repart à zéro.</p>
+    <button class="btn" type="submit">Laisser le découvert dans l'enveloppe</button>
+    {% else %}
+    <p class="small">Un dépassement <strong>reste dans l'enveloppe</strong>, en négatif, jusqu'à ce que vous le combliez.</p>
+    <input type="hidden" name="enabled" value="on">
+    <button class="btn" type="submit">Le reprendre sur le mois suivant</button>
+    {% endif %}
+  </form>
+</div>
+
 {% endblock %}

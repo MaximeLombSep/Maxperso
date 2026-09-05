@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import re
-from collections import defaultdict
+from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from datetime import date
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..models import Envelope, Transaction
+from ..models import Account, Envelope, Transaction
 from .budget import (
     month_income_expense,
     period_bounds,
@@ -316,3 +316,100 @@ def sparkline_points(values: list[int], width: int = 120, height: int = 32) -> s
         for index, value in enumerate(values)
     ]
     return " ".join(coords)
+
+
+# --------------------------------------------------------------------------
+# Âge de l'argent
+# --------------------------------------------------------------------------
+
+# Comme la méthode d'origine : la moyenne porte sur les dernières sorties,
+# pas sur tout l'historique. Un mois exceptionnel ne doit pas figer
+# l'indicateur pendant un an.
+AGE_SAMPLE = 10
+AGE_MIN_SAMPLE = 3
+AGE_MIN_COVERAGE = 0.5
+
+
+@dataclass(frozen=True)
+class MoneyAge:
+    """Depuis combien de jours dormait l'argent que vous venez de dépenser."""
+
+    days: int | None
+    sampled: int = 0
+    coverage: float = 0.0
+
+    @property
+    def known(self) -> bool:
+        return self.days is not None
+
+    @property
+    def comment(self) -> str:
+        if self.days is None:
+            return "Pas encore assez d'historique pour le calculer."
+        if self.days >= 30:
+            return "Vous vivez sur l'argent du mois précédent."
+        if self.days >= 15:
+            return "Vous sortez du fil du rasoir."
+        return "Vous dépensez l'argent presque dès qu'il arrive."
+
+
+def money_age(db: Session, sample: int = AGE_SAMPLE) -> MoneyAge:
+    """Quatrième règle : faire vieillir son argent, et le mesurer.
+
+    Les entrées sont consommées par les sorties dans l'ordre d'arrivée — le
+    premier euro entré est le premier dépensé. L'âge retenu est la moyenne
+    des délais, pondérée par les montants, sur les dernières dépenses.
+
+    Renvoie `days=None` plutôt qu'un chiffre trompeur quand l'historique ne
+    remonte pas assez loin : une dépense payée avec de l'argent entré avant
+    le début des relevés n'est appariable à rien.
+    """
+    rows = db.execute(
+        select(Transaction.op_date, Transaction.amount_cents)
+        .join(Account, Account.id == Transaction.account_id)
+        .where(
+            Transaction.kind != "transfer",
+            Account.is_budgeted.is_(True),
+            Account.archived.is_(False),
+        )
+        .order_by(Transaction.op_date, Transaction.id)
+    ).all()
+
+    queue: deque[list] = deque()  # [date d'entrée, centimes restants]
+    outflows: list[tuple[int, int]] = []  # (somme pondérée des âges, montant apparié)
+
+    for when, amount in rows:
+        if amount > 0:
+            queue.append([when, amount])
+            continue
+
+        needed = -amount
+        weighted = 0
+        matched = 0
+        while needed > 0 and queue:
+            entry = queue[0]
+            taken = min(entry[1], needed)
+            weighted += taken * (when - entry[0]).days
+            matched += taken
+            needed -= taken
+            entry[1] -= taken
+            if entry[1] == 0:
+                queue.popleft()
+        outflows.append((weighted, matched))
+
+    recent = [item for item in outflows[-sample:] if item[1] > 0]
+    if len(recent) < AGE_MIN_SAMPLE:
+        return MoneyAge(days=None, sampled=len(recent))
+
+    requested = len(outflows[-sample:])
+    coverage = len(recent) / requested if requested else 0.0
+    if coverage < AGE_MIN_COVERAGE:
+        return MoneyAge(days=None, sampled=len(recent), coverage=coverage)
+
+    total_weighted = sum(weighted for weighted, _ in recent)
+    total_matched = sum(matched for _, matched in recent)
+    return MoneyAge(
+        days=max(total_weighted // total_matched, 0),
+        sampled=len(recent),
+        coverage=coverage,
+    )

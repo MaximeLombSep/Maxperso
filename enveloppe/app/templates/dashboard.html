@@ -78,6 +78,19 @@
 </div>
 {% endif %}
 
+{% if money_age.known %}
+<div class="card">
+  <div class="card-head">
+    <h2>Âge de l'argent</h2>
+    <span class="pill {{ 'pos' if money_age.days >= 30 else 'warn' }}">{{ money_age.days }} jours</span>
+  </div>
+  <p class="small dim">
+    L'argent que vous dépensez aujourd'hui est arrivé sur le compte il y a <strong>{{ money_age.days }} jours</strong> en moyenne. {{ money_age.comment }}
+    Passer trente jours, c'est vivre sur le salaire du mois précédent — la sortie définitive du fil du rasoir.
+  </p>
+</div>
+{% endif %}
+
 {% if provisioned %}
 <div class="card">
   <p class="small"><strong>{{ provisioned }} enveloppe(s)</strong> viennent d'être dotées automatiquement depuis votre budget de référence pour {{ period_label(period) }}.</p>

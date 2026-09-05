@@ -12,10 +12,13 @@ from ..models import Envelope, EnvelopeGroup
 from ..security import current_user
 from ..services import calibration
 from ..services.budget import (
+    ENVELOPE_KINDS,
+    absorb_overspend,
     autofill_month,
     current_period,
     month_summary,
     move_between,
+    set_absorb_overspend,
     set_allocation,
     shift_period,
 )
@@ -46,6 +49,7 @@ def budget_page(
         auto_apply=calibration.auto_apply_enabled(db),
         review_count=len(calibration.review_pending(db, period)),
         provisioned=provisioned,
+        absorb=absorb_overspend(db),
     )
 
 
@@ -167,7 +171,7 @@ def envelope_create(
     envelope = Envelope(
         name=name.strip()[:80],
         group_id=int(group_id) if group_id else None,
-        kind=kind if kind in {"monthly", "sinking", "income"} else "monthly",
+        kind=kind if kind in ENVELOPE_KINDS else "monthly",
         planned_cents=euros_to_cents(planned),
         target_cents=euros_to_cents(target),
         target_date=(
@@ -214,7 +218,7 @@ def envelope_update(
 
     envelope.name = name.strip()[:80]
     envelope.group_id = int(group_id) if group_id else None
-    envelope.kind = kind if kind in {"monthly", "sinking", "income"} else "monthly"
+    envelope.kind = kind if kind in ENVELOPE_KINDS else "monthly"
     envelope.planned_cents = euros_to_cents(planned)
     envelope.target_cents = euros_to_cents(target)
     envelope.target_date = (
@@ -368,5 +372,23 @@ def toggle_auto_apply(
         "Chaque nouveau mois sera doté automatiquement depuis la référence."
         if enabled
         else "Les nouveaux mois ne seront plus dotés automatiquement.",
+    )
+    return response
+
+
+@router.post(
+    "/budget/depassement", name="toggle_absorb", dependencies=[Depends(csrf_guard)]
+)
+def toggle_absorb(
+    request: Request, enabled: str = Form(""), db: Session = Depends(get_session)
+):
+    """Troisième règle : un dépassement se règle, il ne se traîne pas."""
+    set_absorb_overspend(db, bool(enabled))
+    response = RedirectResponse(path_for(request, "budget_page"), status_code=303)
+    flash(
+        response,
+        "Un dépassement sera repris sur le reste à budgéter du mois suivant."
+        if enabled
+        else "Un dépassement restera dans l'enveloppe, en négatif.",
     )
     return response

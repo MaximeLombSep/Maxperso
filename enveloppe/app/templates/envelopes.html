@@ -34,7 +34,8 @@
       </select></div>
     <div class="field"><label for="e-kind">Type</label>
       <select id="e-kind" name="kind">
-        <option value="monthly">Mensuelle</option>
+        <option value="monthly">Mensuelle — ajoute la dotation chaque mois</option>
+        <option value="refill">À recompléter — remet l'enveloppe au montant prévu</option>
         <option value="sinking">Provision (échéance future)</option>
         <option value="income">Revenus</option>
       </select></div>
@@ -68,6 +69,7 @@
           <td class="small dim">{{ envelope.group.name if envelope.group else '—' }}</td>
           <td class="small">
             {% if envelope.kind == 'sinking' %}<span class="pill info">provision</span>
+            {% elif envelope.kind == 'refill' %}<span class="pill accent">à recompléter</span>
             {% elif envelope.kind == 'income' %}<span class="pill pos">revenus</span>
             {% else %}<span class="pill">mensuelle</span>{% endif %}
           </td>
@@ -90,6 +92,7 @@
                 <div class="field"><label>Type</label>
                   <select name="kind">
                     <option value="monthly" {{ 'selected' if envelope.kind == 'monthly' }}>Mensuelle</option>
+                    <option value="refill" {{ 'selected' if envelope.kind == 'refill' }}>À recompléter</option>
                     <option value="sinking" {{ 'selected' if envelope.kind == 'sinking' }}>Provision</option>
                     <option value="income" {{ 'selected' if envelope.kind == 'income' }}>Revenus</option>
                   </select></div>

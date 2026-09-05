@@ -9,7 +9,23 @@ from datetime import date
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..models import Account, Allocation, Envelope, EnvelopeGroup, Transaction
+from ..models import (
+    Account,
+    Allocation,
+    Envelope,
+    EnvelopeGroup,
+    Setting,
+    Transaction,
+)
+
+# Types d'enveloppes qui se dotent. « monthly » ajoute la dotation prévue
+# chaque mois ; « refill » complète jusqu'à ce montant, ce qui reste dedans
+# venant en déduction — c'est la différence entre « je mets 400 € de plus »
+# et « je remets l'enveloppe à 400 € ».
+FUNDED_KINDS = ("monthly", "refill")
+ENVELOPE_KINDS = ("monthly", "refill", "sinking", "income")
+
+ABSORB_OVERSPEND_KEY = "absorb_overspend"
 
 MONTHS_FR = [
     "janvier", "février", "mars", "avril", "mai", "juin",
@@ -128,6 +144,7 @@ class MonthSummary:
     to_budget: int = 0
     available_total: int = 0
     uncategorized: int = 0
+    absorbed: int = 0  # dépassements des mois passés, repris sur ce mois-ci
 
     @property
     def label(self) -> str:
@@ -195,13 +212,38 @@ def month_income_expense(db: Session, period: str) -> tuple[int, int]:
     return income, expense
 
 
+def absorb_overspend(db: Session) -> bool:
+    """Un dépassement est-il repris sur le reste à budgéter du mois suivant ?
+
+    Troisième règle de la méthode : on encaisse le coup. Une enveloppe qui
+    finit dans le rouge ne traîne pas son découvert de mois en mois — le
+    dépassement est couvert par l'argent du mois suivant, et l'enveloppe
+    repart de zéro. Désactivable pour qui préfère voir la dette rester où
+    elle a été creusée.
+    """
+    setting = db.get(Setting, ABSORB_OVERSPEND_KEY)
+    return setting is None or setting.value != "0"
+
+
+def set_absorb_overspend(db: Session, enabled: bool) -> None:
+    setting = db.get(Setting, ABSORB_OVERSPEND_KEY)
+    if setting is None:
+        setting = Setting(key=ABSORB_OVERSPEND_KEY)
+        db.add(setting)
+    setting.value = "1" if enabled else "0"
+    db.commit()
+
+
 def suggested_allocation(envelope: Envelope, period: str, available_now: int) -> int:
     """Dotation conseillée du mois.
 
     - enveloppe mensuelle : la dotation prévue ;
+    - enveloppe à recompléter : ce qui manque pour revenir au montant prévu ;
     - provision (`sinking`) : ce qu'il reste à mettre de côté, étalé sur les
       mois restants jusqu'à l'échéance.
     """
+    if envelope.kind == "refill":
+        return max(envelope.planned_cents - max(available_now, 0), 0)
     if envelope.kind != "sinking" or not envelope.target_cents:
         return max(envelope.planned_cents, 0)
 
@@ -238,6 +280,9 @@ def month_summary(db: Session, period: str) -> MonthSummary:
         if current is None or step < current:
             first_allocation[envelope_id] = step
 
+    absorb = absorb_overspend(db)
+    absorbed_total = 0
+
     states: dict[int, EnvelopeState] = {}
     for envelope in envelopes:
         if envelope.kind == "income":
@@ -266,7 +311,14 @@ def month_summary(db: Session, period: str) -> MonthSummary:
             balance = carry + allocated + month_activity
             if step == period:
                 break
-            carry = balance if envelope.rollover else 0
+            if balance < 0 and absorb:
+                # Le découvert d'une enveloppe ne se promène pas de mois en
+                # mois : il est couvert par l'argent du mois suivant, et
+                # l'enveloppe repart à zéro.
+                absorbed_total += -balance
+                carry = 0
+            else:
+                carry = balance if envelope.rollover else 0
         state = EnvelopeState(
             envelope=envelope,
             carry_in=carry,
@@ -318,9 +370,10 @@ def month_summary(db: Session, period: str) -> MonthSummary:
             for envelope in envelopes
             if envelope.kind != "income"
         ),
-        to_budget=cumulative_income - cumulative_allocated,
+        to_budget=cumulative_income - cumulative_allocated - absorbed_total,
         available_total=sum(s.available for s in states.values()),
         uncategorized=int(uncategorized or 0),
+        absorbed=absorbed_total,
     )
 
 

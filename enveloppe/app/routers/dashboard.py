@@ -92,6 +92,7 @@ def dashboard(
         reference_total=calibration.reference_total(db),
         review_proposals=calibration.review_pending(db, period),
         rule_suggestions=categorizer.suggest_rules(db, limit=5),
+        money_age=analytics.money_age(db),
         insurance_alerts=insurance.alerts(db),
         insurance_totals=insurance.totals(db),
         security=savings.security_fund(db),

@@ -25,7 +25,13 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..models import Allocation, Envelope, Setting, Transaction
-from .budget import current_period, months_between, period_label, shift_period
+from .budget import (
+    FUNDED_KINDS,
+    current_period,
+    months_between,
+    period_label,
+    shift_period,
+)
 
 # Clés de la table `settings`.
 AUTO_APPLY_KEY = "budget_auto_apply"
@@ -155,7 +161,7 @@ def _budgetable(db: Session) -> list[Envelope]:
             select(Envelope)
             .where(
                 Envelope.archived.is_(False),
-                Envelope.kind == "monthly",
+                Envelope.kind.in_(FUNDED_KINDS),
             )
             .order_by(Envelope.position, Envelope.name)
         )
