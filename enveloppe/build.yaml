@@ -1,0 +1,8 @@
+# Images de base épinglées : Python et pip sont déjà présents, dans une
+# version connue. Sans ce fichier, le Superviseur choisit une base Alpine nue
+# où il faut installer Python soi-même — et la version de pip qu'on y trouve
+# varie d'une révision à l'autre, ce qui rend la construction imprévisible.
+build_from:
+  aarch64: ghcr.io/home-assistant/aarch64-base-python:3.12-alpine3.18
+  amd64: ghcr.io/home-assistant/amd64-base-python:3.12-alpine3.18
+  armv7: ghcr.io/home-assistant/armv7-base-python:3.12-alpine3.18
