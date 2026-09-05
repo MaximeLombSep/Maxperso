@@ -1,11 +1,11 @@
 name: Enveloppe — Budget
-version: "1.7.1"
+version: "1.7.2"
 slug: enveloppe
 description: >-
   Suivi de budget en mode enveloppe : import de relevés bancaires,
   catégorisation automatique, contrats d'assurance avec documents et
   échéances, objectifs d'épargne.
-url: https://github.com/MaximeLombSep/maxperso
+url: https://github.com/MaximeLombSep/Test
 arch:
   - aarch64
   - amd64

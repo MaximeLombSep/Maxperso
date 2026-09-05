@@ -438,8 +438,10 @@ def _seed_guess(db: Session, normalized: str) -> Envelope | None:
 def _income_guess(db: Session, normalized: str) -> Envelope | None:
     """Enveloppe de revenus plausible pour une entrée récurrente.
 
-    À défaut de motif reconnu, « Salaire » est le pari le plus sûr : une
-    entrée qui revient tous les mois en est un neuf fois sur dix.
+    Aucune valeur par défaut : proposer « Salaire » pour un virement portant
+    le nom d'une personne serait pire que ne rien proposer. Un virement
+    entre particuliers est le plus souvent un remboursement, qui n'a rien à
+    faire dans une enveloppe de revenus.
     """
     for pattern, envelope_name in SEED_RULES:
         if not pattern.strip() or pattern.strip() not in normalized:
@@ -447,7 +449,7 @@ def _income_guess(db: Session, normalized: str) -> Envelope | None:
         envelope = _envelope_named(db, envelope_name)
         if envelope is not None and envelope.kind == "income":
             return envelope
-    return _envelope_named(db, "Salaire")
+    return None
 
 
 def _learned_guess(db: Session, pattern: str) -> Envelope | None:

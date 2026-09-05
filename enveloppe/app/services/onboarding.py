@@ -83,9 +83,9 @@ def steps(db: Session) -> list[Step]:
             slug="revenus",
             title=TITLES["revenus"],
             intro=(
-                "Salaire, prestations, remboursements réguliers : ce qui entre "
-                "alimente le reste à budgéter. Une entrée non reconnue manque au "
-                "budget du mois."
+                "Salaire et prestations alimentent le reste à budgéter. Un "
+                "virement d'un proche, lui, rembourse une dépense : il retourne "
+                "dans l'enveloppe qui a payé, sans rien ajouter à répartir."
             ),
             done=imported and not revenus,
             pending=len(revenus),

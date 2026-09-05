@@ -73,7 +73,11 @@
   {# ------------------------------------------------------------------ #}
   {% elif step.slug in ('revenus', 'depenses') %}
   {% set suggestions = income_suggestions if step.slug == 'revenus' else spending_suggestions %}
-  {% set choix = income_envelopes if step.slug == 'revenus' else spending_envelopes %}
+  {% if step.slug == 'revenus' %}
+  <div class="card note-card">
+    <p class="small"><strong>Toutes les entrées ne sont pas des revenus.</strong> Un virement d'un proche qui vous rend sa part d'un restaurant est un <em>remboursement</em> : il annule une partie de la dépense. Rangez-le dans l'enveloppe qui a payé — « Restaurants », « Loisirs » — et non dans « Salaire ». L'argent revient dans l'enveloppe, et le reste à budgéter ne bouge pas.</p>
+  </div>
+  {% endif %}
   {% if suggestions %}
   <div class="card">
     <div class="card-head">
@@ -94,9 +98,22 @@
       <div class="act">
         <select name="envelope_id" aria-label="Enveloppe pour {{ s.pattern }}" required>
           {% if not s.envelope_id %}<option value="" selected>Choisir…</option>{% endif %}
-          {% for envelope in choix %}
+          {% if step.slug == 'revenus' %}
+          <optgroup label="C'est un revenu">
+            {% for envelope in income_envelopes %}
+            <option value="{{ envelope.id }}" {{ 'selected' if envelope.id == s.envelope_id }}>{{ envelope.name }}</option>
+            {% endfor %}
+          </optgroup>
+          <optgroup label="C'est un remboursement">
+            {% for envelope in spending_envelopes %}
+            <option value="{{ envelope.id }}">{{ envelope.name }}</option>
+            {% endfor %}
+          </optgroup>
+          {% else %}
+          {% for envelope in spending_envelopes %}
           <option value="{{ envelope.id }}" {{ 'selected' if envelope.id == s.envelope_id }}>{{ envelope.name }}</option>
           {% endfor %}
+          {% endif %}
         </select>
         <button class="btn sm primary" type="submit">Classer</button>
       </div>

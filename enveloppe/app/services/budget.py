@@ -247,11 +247,20 @@ def _allocation_timeline(db: Session) -> dict[tuple[int, str], int]:
 
 
 def month_income_expense(db: Session, period: str) -> tuple[int, int]:
-    """(revenus, dépenses) du mois sur les comptes budgétés, hors virements."""
+    """(revenus, dépenses) du mois sur les comptes budgétés, hors virements.
+
+    Une entrée affectée à une enveloppe de **dépense** est un remboursement,
+    pas un revenu : un ami qui vous rend sa part du restaurant ne vous fait
+    pas gagner d'argent, il annule une partie de la dépense. Elle vient donc
+    en déduction des dépenses du mois, et ne grossit pas le reste à
+    budgéter — sans quoi la même somme serait comptée deux fois, une fois
+    dans l'enveloppe et une fois dans ce qu'il reste à répartir.
+    """
     start, end = period_bounds(period)
     rows = db.execute(
-        select(Transaction.amount_cents)
+        select(Transaction.amount_cents, Envelope.kind)
         .join(Account, Account.id == Transaction.account_id)
+        .outerjoin(Envelope, Envelope.id == Transaction.envelope_id)
         .where(
             Transaction.op_date >= start,
             Transaction.op_date <= end,
@@ -259,9 +268,20 @@ def month_income_expense(db: Session, period: str) -> tuple[int, int]:
             Account.is_budgeted.is_(True),
         )
     ).all()
-    income = sum(amount for (amount,) in rows if amount > 0)
-    expense = -sum(amount for (amount,) in rows if amount < 0)
-    return income, expense
+
+    income = 0
+    expense = 0
+    for amount, envelope_kind in rows:
+        if amount > 0 and envelope_kind is not None and envelope_kind != "income":
+            expense -= amount  # remboursement : la dépense du mois diminue
+        elif amount > 0:
+            income += amount
+        else:
+            expense += -amount
+    # Un mois où les remboursements dépassent les dépenses existe (une
+    # avance remboursée le mois suivant) : afficher une dépense négative
+    # embrouillerait plus que le zéro.
+    return income, max(expense, 0)
 
 
 def absorb_overspend(db: Session) -> bool:

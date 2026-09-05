@@ -833,3 +833,5 @@ table.mini thead th {
 
 .points-list { margin: 0; padding-left: 1.1rem; display: flex; flex-direction: column; gap: 6px; }
 .points-list li { font-size: .9rem; color: var(--text-dim); }
+
+.note-card { border-left: 3px solid var(--accent); }
