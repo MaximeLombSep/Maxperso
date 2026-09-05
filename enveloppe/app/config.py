@@ -39,6 +39,7 @@ class Settings:
     max_upload_mb: int
     behind_proxy: bool
     require_login: bool
+    apply_migrations: bool
 
     @property
     def db_path(self) -> Path:
@@ -92,6 +93,7 @@ def load_settings() -> Settings:
         # authentifié par HA : un second mot de passe n'ajoute rien. En accès
         # direct, en revanche, il reste la seule protection.
         require_login=_env_bool("BUDGET_REQUIRE_LOGIN", False),
+        apply_migrations=_env_bool("BUDGET_APPLY_MIGRATIONS", False),
     )
 
 

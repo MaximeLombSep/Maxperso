@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -17,6 +17,7 @@ from . import __version__
 from .config import settings
 from .db import engine
 from .models import Base
+from .schema_check import apply_missing_columns
 from .schema_check import report as report_schema_gaps
 from .routers import (
     accounts,
@@ -35,6 +36,11 @@ from .templating import path_for
 from .security import CSRF_COOKIE, new_csrf_token, secure_cookies_enabled
 
 STATIC_DIR = Path(__file__).parent / "static"
+
+# Écart de schéma constaté au démarrage. Non vide, il coupe l'application :
+# mieux vaut une page qui explique quoi faire qu'une pile d'erreurs SQL sur
+# chaque écran.
+SCHEMA_GAPS: dict[str, list[str]] = {}
 
 # Sans ce type, le manifeste part en `application/octet-stream` et le
 # navigateur refuse d'installer l'application sur l'écran d'accueil.
@@ -73,6 +79,67 @@ class IngressMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
+MAINTENANCE_PAGE = """<!doctype html>
+<html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mise à jour de la base — Enveloppe</title>
+<style>
+ :root {{ color-scheme: light dark; }}
+ body {{ margin:0; padding:28px 20px; font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+        background:#f5f6f8; color:#11161c; }}
+ main {{ max-width:34rem; margin:0 auto; background:#fff; border-radius:14px;
+         padding:24px; box-shadow:0 1px 3px rgba(0,0,0,.08); }}
+ h1 {{ font-size:1.35rem; margin:0 0 12px; }}
+ ol {{ padding-left:1.2rem; }} li {{ margin-bottom:10px; }}
+ code {{ background:#eceff3; padding:2px 6px; border-radius:4px; font-size:.9em; }}
+ .gaps {{ background:#eceff3; border-radius:8px; padding:12px; font-size:.86rem;
+          margin:16px 0; overflow-x:auto; }}
+ .note {{ color:#5b6775; font-size:.88rem; }}
+ @media (prefers-color-scheme: dark) {{
+   body {{ background:#0b0d12; color:#e6eaf0; }}
+   main {{ background:#141922; box-shadow:none; }}
+   code, .gaps {{ background:#1c2330; }} .note {{ color:#9aa6b6; }}
+ }}
+</style></head><body><main>
+<h1>La base doit être complétée</h1>
+<p>Cette version attend des colonnes qui n'existent pas encore dans votre
+base. Rien n'est modifié automatiquement : une modification de schéma se
+décide.</p>
+<div class="gaps">{gaps}</div>
+<ol>
+<li><strong>Sauvegardez</strong> — Paramètres → Système → Sauvegardes, en incluant cet add-on.</li>
+<li>Ouvrez la <strong>configuration de l'add-on</strong> et activez
+    <code>apply_migrations</code>.</li>
+<li><strong>Redémarrez</strong> l'add-on. Les colonnes sont ajoutées, chaque
+    instruction exécutée est écrite dans le journal.</li>
+<li>Repassez <code>apply_migrations</code> sur <em>off</em>.</li>
+</ol>
+<p class="note">Seul l'ajout de colonne est possible par ce chemin : aucune
+suppression, aucun renommage, aucune donnée existante touchée. Le script
+équivalent est dans <code>docs/migrations/</code> si vous préférez le
+passer à la main.</p>
+</main></body></html>"""
+
+
+class MaintenanceMiddleware(BaseHTTPMiddleware):
+    """Coupe l'application tant que le schéma est incomplet.
+
+    Servir les écrans avec des colonnes manquantes ne produirait que des
+    erreurs SQL illisibles, écran après écran. Une page unique qui dit quoi
+    faire vaut mieux, et elle ne dépend d'aucune requête.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        if not SCHEMA_GAPS or request.url.path.startswith("/static"):
+            return await call_next(request)
+        detail = "<br>".join(
+            f"{table} → {', '.join(columns)}" for table, columns in SCHEMA_GAPS.items()
+        )
+        return HTMLResponse(
+            MAINTENANCE_PAGE.format(gaps=detail), status_code=503
+        )
+
+
 class SecurityMiddleware(BaseHTTPMiddleware):
     """En-têtes de sécurité et émission du jeton CSRF."""
 
@@ -109,11 +176,15 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     """Le schéma est créé au démarrage s'il n'existe pas déjà.
 
     SQLite est local à l'installation. Les tables manquantes sont créées ;
-    une table existante n'est jamais modifiée automatiquement — un écart de
-    colonnes est signalé dans les journaux avec le script à exécuter.
+    une table existante n'est jamais modifiée sans décision explicite — un
+    écart de colonnes est signalé dans les journaux, et n'est comblé que si
+    l'option « apply_migrations » a été activée dans la configuration.
     """
     Base.metadata.create_all(bind=engine)
-    report_schema_gaps(engine)
+    if settings.apply_migrations:
+        apply_missing_columns(engine)
+    SCHEMA_GAPS.clear()
+    SCHEMA_GAPS.update(report_schema_gaps(engine))
     yield
 
 
@@ -130,6 +201,9 @@ def create_app() -> FastAPI:
 
     application.add_middleware(SecurityMiddleware)
     application.add_middleware(IngressMiddleware)
+    # Ajouté en dernier, donc évalué en premier : inutile de fabriquer un
+    # jeton CSRF pour une application qui ne peut pas répondre.
+    application.add_middleware(MaintenanceMiddleware)
     application.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
     for router in (

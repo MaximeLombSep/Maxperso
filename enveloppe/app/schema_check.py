@@ -11,12 +11,14 @@ from __future__ import annotations
 import logging
 
 from sqlalchemy import Engine, inspect
+from sqlalchemy.dialects import sqlite
 
 from .models import Base
 
 logger = logging.getLogger("enveloppe.schema")
 
 MIGRATIONS_HINT = "docs/migrations/"
+SQLITE = sqlite.dialect()
 
 
 def missing_columns(engine: Engine) -> dict[str, list[str]]:
@@ -48,3 +50,80 @@ def report(engine: Engine) -> dict[str, list[str]]:
             MIGRATIONS_HINT,
         )
     return gaps
+
+
+def _ddl_for(column) -> str | None:
+    """Instruction d'ajout d'une colonne, ou None si elle n'est pas sûre.
+
+    Seul `ADD COLUMN` est produit : c'est la seule opération de schéma qui
+    ne touche à aucune donnée existante. Une colonne obligatoire sans valeur
+    par défaut est refusée — SQLite ne saurait pas quoi mettre dans les
+    lignes déjà là, et deviner à sa place serait pire que s'arrêter.
+    """
+    kind = column.type.compile(dialect=SQLITE)
+    clause = f'ADD COLUMN "{column.name}" {kind}'
+
+    default = None
+    if column.server_default is not None:
+        default = str(column.server_default.arg)
+    elif column.default is not None and not column.default.is_callable:
+        value = column.default.arg
+        if isinstance(value, bool):
+            default = "1" if value else "0"
+        elif isinstance(value, (int, float)):
+            default = str(value)
+        elif isinstance(value, str):
+            escaped = value.replace("'", "''")
+            default = f"'{escaped}'"
+
+    if not column.nullable:
+        if default is None:
+            return None
+        return f"{clause} NOT NULL DEFAULT {default}"
+    if default is not None:
+        return f"{clause} DEFAULT {default}"
+    return clause
+
+
+def apply_missing_columns(engine: Engine) -> tuple[list[str], list[str]]:
+    """Ajoute les colonnes manquantes. Retourne (appliquées, refusées).
+
+    N'est jamais appelée d'elle-même : il faut avoir activé l'option
+    correspondante dans la configuration de l'add-on, ce qui vaut décision
+    explicite. Rien d'autre qu'un ajout de colonne n'est exécuté ici — pas
+    de suppression, pas de renommage, pas de modification de type.
+    """
+    gaps = missing_columns(engine)
+    if not gaps:
+        return [], []
+
+    applied: list[str] = []
+    refused: list[str] = []
+
+    with engine.begin() as connection:
+        for table in Base.metadata.sorted_tables:
+            for name in gaps.get(table.name, []):
+                column = table.columns[name]
+                clause = _ddl_for(column)
+                if clause is None:
+                    refused.append(f"{table.name}.{name}")
+                    logger.error(
+                        "Colonne %s.%s non ajoutée : obligatoire et sans valeur "
+                        "par défaut. Exécutez la migration correspondante à la main.",
+                        table.name,
+                        name,
+                    )
+                    continue
+                statement = f'ALTER TABLE "{table.name}" {clause}'
+                logger.warning("Migration : %s", statement)
+                connection.exec_driver_sql(statement)
+                applied.append(f"{table.name}.{name}")
+
+    if applied:
+        logger.warning(
+            "%d colonne(s) ajoutée(s) : %s. Repassez l'option "
+            "« apply_migrations » sur off, elle n'a plus lieu d'être.",
+            len(applied),
+            ", ".join(applied),
+        )
+    return applied, refused

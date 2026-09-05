@@ -1,5 +1,5 @@
 name: Enveloppe — Budget
-version: "1.5.1"
+version: "1.5.2"
 slug: enveloppe
 description: >-
   Suivi de budget en mode enveloppe : import de relevés bancaires,
@@ -36,8 +36,10 @@ options:
   max_upload_mb: 25
   allow_insecure_cookies: true
   require_login: false
+  apply_migrations: false
 schema:
   currency: str
   max_upload_mb: int(1,100)
   allow_insecure_cookies: bool
   require_login: bool
+  apply_migrations: bool

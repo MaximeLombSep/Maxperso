@@ -24,6 +24,17 @@ else
   export BUDGET_REQUIRE_LOGIN=0
 fi
 
+# Ajout des colonnes manquantes au prochain démarrage. Volontairement
+# désactivé par défaut : une modification de schéma se décide, elle ne se
+# subit pas. L'add-on journalise chaque instruction exécutée.
+if bashio::config.true 'apply_migrations'; then
+  export BUDGET_APPLY_MIGRATIONS=1
+  bashio::log.warning "Option « apply_migrations » active : les colonnes manquantes seront ajoutées au démarrage."
+  bashio::log.warning "Sauvegardez avant, et repassez l'option sur off ensuite."
+else
+  export BUDGET_APPLY_MIGRATIONS=0
+fi
+
 bashio::log.info "Démarrage d'Enveloppe sur le port 8099 (ingress)."
 
 exec python3 -m uvicorn app.main:app \
