@@ -188,6 +188,10 @@ class ImportProfile(Base):
     col_debit: Mapped[str] = mapped_column(String(80), default="")
     col_credit: Mapped[str] = mapped_column(String(80), default="")
     col_value_date: Mapped[str] = mapped_column(String(80), default="")
+    # Classement fourni par la banque. Sert de repli quand aucune règle de
+    # l'utilisateur ne reconnaît le libellé — ses règles gardent la main.
+    col_category: Mapped[str] = mapped_column(String(80), default="")
+    col_subcategory: Mapped[str] = mapped_column(String(80), default="")
     invert_sign: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
@@ -234,6 +238,10 @@ class Transaction(Base):
     transfer_group: Mapped[str | None] = mapped_column(String(36), default=None)
     notes: Mapped[str] = mapped_column(Text, default="")
     fitid: Mapped[str | None] = mapped_column(String(64), default=None)
+    # Rubrique telle que la banque l'a fournie. Conservée pour que le
+    # reclassement puisse la rejouer sans redemander le fichier.
+    bank_category: Mapped[str] = mapped_column(String(80), default="")
+    bank_subcategory: Mapped[str] = mapped_column(String(80), default="")
     fingerprint: Mapped[str] = mapped_column(String(64))
     import_batch_id: Mapped[int | None] = mapped_column(
         ForeignKey("import_batches.id", ondelete="SET NULL"), default=None

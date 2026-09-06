@@ -561,7 +561,16 @@ def create_rule(
 
 
 def recategorize_all(db: Session) -> int:
-    """Repasse toutes les opérations non classées dans les règles courantes."""
+    """Repasse les règles, puis le classement de la banque.
+
+    La rubrique bancaire étant conservée sur l'opération, ce second passage
+    rattrape aussi les relevés importés avant que ce classement n'existe :
+    inutile de redemander les fichiers.
+
+    Le balayage des rubriques ne se limite pas aux opérations sans enveloppe.
+    Une exclusion — virement interne, débit différé — doit pouvoir sortir du
+    budget une opération qu'une règle avait rangée par erreur.
+    """
     pending = list(
         db.scalars(
             select(Transaction).where(
@@ -569,4 +578,122 @@ def recategorize_all(db: Session) -> int:
             )
         )
     )
-    return apply_rules(db, pending)
+    classees = apply_rules(db, pending)
+
+    porteuses = list(
+        db.scalars(
+            select(Transaction).where(
+                Transaction.bank_subcategory != "",
+                Transaction.reviewed.is_(False),
+            )
+        )
+    )
+    _, depuis_banque = apply_bank_classification(db, porteuses)
+    return classees + depuis_banque
+
+
+# --------------------------------------------------------------------------
+# Classement fourni par la banque
+# --------------------------------------------------------------------------
+
+# Les exports bancaires portent souvent leur propre rubrique. S'en servir en
+# repli évite de redemander à l'utilisateur ce que sa banque sait déjà — mais
+# jamais en premier : une règle qu'il a écrite exprime une intention, la
+# rubrique de la banque n'est qu'une supposition commerciale.
+
+# Rubriques que la banque marque elle-même comme ne relevant pas du budget.
+BANK_EXCLUDED_SUBCATEGORIES = {
+    "virement interne",
+    "transaction differee",
+}
+
+# Rubrique de la banque -> enveloppe du plan par défaut. Volontairement
+# incomplète : les rubriques « à catégoriser » de la banque n'y figurent pas,
+# et une rubrique trop large non plus. Quand la banque ne sait pas, deviner à
+# sa place vaut moins que laisser l'opération en attente.
+BANK_SUBCATEGORY_ENVELOPE = {
+    "salaires": "Salaire",
+    "credit": "Loyer / Crédit",
+    "internet et telephonie": "Téléphone / Internet",
+    "energie eau gaz electricite fioul": "Énergie",
+    "mutuelle": "Mutuelle",
+    "banque et assurance autre": "Assurances",
+    "sport gym et equipement": "Loisirs",
+}
+
+
+def bank_key(value: str) -> str:
+    """Forme comparable d'une rubrique : sans accent, sans ponctuation.
+
+    Distincte de `normalize_label()`, qui alimente l'empreinte anti-doublon
+    et ne doit pas bouger. Celle-ci ne sert qu'à comparer des intitulés de
+    rubrique, dont l'orthographe varie d'un export à l'autre.
+    """
+    text = unicodedata.normalize("NFKD", value or "")
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    text = re.sub(r"[^a-z0-9]+", " ", text.lower())
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _envelope_for_bank(db: Session, subcategory: str) -> Envelope | None:
+    """Enveloppe correspondant à une rubrique, exacte puis par préfixe.
+
+    Le préfixe rattrape les intitulés tronqués par la banque, fréquents sur
+    les rubriques longues.
+    """
+    cle = bank_key(subcategory)
+    if not cle:
+        return None
+    nom = BANK_SUBCATEGORY_ENVELOPE.get(cle)
+    if nom is None:
+        for connue, candidate in BANK_SUBCATEGORY_ENVELOPE.items():
+            if cle.startswith(connue) or connue.startswith(cle):
+                nom = candidate
+                break
+    return _envelope_named(db, nom) if nom else None
+
+
+def apply_bank_classification(
+    db: Session, transactions: list[Transaction]
+) -> tuple[int, int]:
+    """Repli sur la rubrique bancaire. Retourne (écartées, classées).
+
+    La rubrique est lue sur l'opération elle-même, ce qui permet de rejouer
+    le classement plus tard sans redemander le fichier. Une affectation
+    manuelle (`reviewed`) et une enveloppe déjà posée par une règle sont
+    toujours respectées.
+
+    Un règlement de carte différée n'est écarté que si la carte existe comme
+    compte : sans elle, les achats détaillés ne sont nulle part, et sortir le
+    règlement du calcul ferait disparaître des dépenses bien réelles.
+    """
+    from .cards import deferred_cards
+
+    cartes_declarees = bool(deferred_cards(db))
+    ecartees = 0
+    classees = 0
+
+    for transaction in transactions:
+        if transaction.reviewed:
+            continue
+        subcategory = transaction.bank_subcategory or ""
+        cle = bank_key(subcategory)
+
+        if cle in BANK_EXCLUDED_SUBCATEGORIES:
+            if cle == "transaction differee" and not cartes_declarees:
+                continue  # la dépense reste comptée, faute de compte de carte
+            transaction.kind = "transfer"
+            transaction.envelope_id = None
+            ecartees += 1
+            continue
+
+        if transaction.envelope_id is not None:
+            continue
+        envelope = _envelope_for_bank(db, subcategory)
+        if envelope is not None:
+            transaction.envelope_id = envelope.id
+            classees += 1
+
+    if ecartees or classees:
+        db.commit()
+    return ecartees, classees

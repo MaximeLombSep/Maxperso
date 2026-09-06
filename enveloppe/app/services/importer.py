@@ -21,7 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..models import Account, ImportBatch, ImportProfile, Transaction
-from .categorizer import apply_rules, normalize_label
+from .categorizer import apply_bank_classification, apply_rules, normalize_label
 from .money import parse_amount
 
 ENCODINGS = ("utf-8-sig", "utf-8", "cp1252", "latin-1")
@@ -42,6 +42,8 @@ HEADER_HINTS = {
                "montant (eur)"),
     "debit": ("debit", "debit euros", "retrait", "depense"),
     "credit": ("credit", "credit euros", "depot", "recette"),
+    "category": ("categorie", "category", "rubrique"),
+    "subcategory": ("sous categorie", "sous rubrique", "subcategory"),
 }
 
 
@@ -53,6 +55,8 @@ class ParsedTx:
     raw_label: str = ""
     value_date: date | None = None
     fitid: str | None = None
+    bank_category: str = ""
+    bank_subcategory: str = ""
 
 
 @dataclass
@@ -86,6 +90,7 @@ class ImportResult:
     duplicates: int = 0
     errors: int = 0
     categorized: int = 0
+    enriched: int = 0
     savings_paired: int = 0
     messages: list[str] = field(default_factory=list)
     suspects: list[Suspect] = field(default_factory=list)
@@ -286,6 +291,8 @@ def parse_csv(raw: bytes, profile: ImportProfile) -> tuple[list[ParsedTx], int, 
     i_debit = index_of(profile.col_debit)
     i_credit = index_of(profile.col_credit)
     i_value = index_of(profile.col_value_date)
+    i_category = index_of(profile.col_category)
+    i_subcategory = index_of(profile.col_subcategory)
 
     if i_date is None or i_label is None:
         return [], len(body), ["Colonnes date ou libellé introuvables."]
@@ -330,6 +337,8 @@ def parse_csv(raw: bytes, profile: ImportProfile) -> tuple[list[ParsedTx], int, 
                 label=label[:255],
                 raw_label=label,
                 value_date=parse_date(cell(i_value), profile.date_format),
+                bank_category=cell(i_category)[:80],
+                bank_subcategory=cell(i_subcategory)[:80],
             )
         )
 
@@ -508,6 +517,8 @@ def ingest(
     # même jour reçoivent des rangs différents et sont tous deux conservés.
     occurrences: dict[tuple, int] = defaultdict(int)
     fresh: list[Transaction] = []
+    # Opérations déjà en base que ce fichier vient compléter.
+    enrichies: list[Transaction] = []
 
     for item in sorted(parsed, key=lambda t: t.op_date):
         normalized = normalize_label(item.raw_label or item.label)
@@ -518,6 +529,22 @@ def ingest(
         )
         if digest in known_fingerprints:
             result.duplicates += 1
+            # Un relevé réimporté n'apporte pas de nouvelle opération, mais il
+            # peut porter une rubrique que la version précédente ne savait pas
+            # lire. La compléter évite d'avoir à repartir d'une base vide.
+            if item.bank_subcategory:
+                ancienne = db.scalars(
+                    select(Transaction).where(
+                        Transaction.account_id == account.id,
+                        Transaction.fingerprint == digest,
+                        Transaction.bank_subcategory == "",
+                    )
+                ).first()
+                if ancienne is not None:
+                    ancienne.bank_category = item.bank_category
+                    ancienne.bank_subcategory = item.bank_subcategory
+                    enrichies.append(ancienne)
+                    result.enriched += 1
             continue
 
         near = find_near_duplicate(
@@ -549,6 +576,8 @@ def ingest(
             normalized_label=normalized[:255],
             kind="income" if item.amount_cents > 0 else "expense",
             fitid=item.fitid,
+            bank_category=item.bank_category,
+            bank_subcategory=item.bank_subcategory,
             fingerprint=digest,
             import_batch_id=batch.id,
         )
@@ -573,6 +602,24 @@ def ingest(
 
     result.savings_paired = apply_savings_patterns(db)
     result.categorized = apply_rules(db, fresh)
+
+    # Repli : ce que la banque classait déjà et que personne n'avait exploité.
+    ecartees, classees = apply_bank_classification(db, fresh + enrichies)
+    result.categorized += classees
+    if classees:
+        result.messages.append(
+            f"{classees} opération(s) classée(s) d'après la rubrique de la banque."
+        )
+    if result.enriched:
+        result.messages.append(
+            f"{result.enriched} opération(s) déjà en base ont reçu la rubrique "
+            "de la banque, absente lors de leur premier import."
+        )
+    if ecartees:
+        result.messages.append(
+            f"{ecartees} opération(s) écartée(s) du budget : la banque les marque "
+            "comme virement interne ou débit différé."
+        )
     result.inserted_ids = [tx.id for tx in fresh]
     result.batch_id = batch.id
     return result
@@ -636,4 +683,6 @@ def default_profile(name: str, preview: ImportPreview) -> ImportProfile:
         col_debit=mapping.get("debit", ""),
         col_credit=mapping.get("credit", ""),
         col_value_date=mapping.get("value_date", ""),
+        col_category=mapping.get("category", ""),
+        col_subcategory=mapping.get("subcategory", ""),
     )

@@ -623,6 +623,15 @@ details.disclose > div { padding-top: 14px; }
   .card { padding: 14px; }
   .kpi .value { font-size: 1.35rem; }
   .g2, .g3, .g4 { grid-template-columns: 1fr; }
+
+  /* Les indicateurs gardent deux colonnes. Empiles pleine largeur, quatre
+     nombres obligeaient a faire defiler pour lire ce qui doit se saisir d'un
+     coup d'oeil. Un navigateur sans `:has()` retombe sur une colonne : il y
+     perd la densite, pas la lisibilite. */
+  .g4:has(> .kpi) { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .g4:has(> .kpi) .kpi { padding: 12px 13px; }
+  .g4:has(> .kpi) .kpi .value { font-size: 1.2rem; }
+  .g4:has(> .kpi) .kpi .hint { font-size: .72rem; }
   .env-row { grid-template-columns: 1fr 108px; grid-template-areas: "name alloc" "meta avail"; row-gap: 6px; }
   .env-row .env-name { grid-area: name; }
   .env-row .cell-alloc { grid-area: alloc; }
