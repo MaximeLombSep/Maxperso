@@ -27,9 +27,9 @@
       <a href="{{ url_for('budget_page') }}" class="{{ 'on' if active == 'budget' }}"><span class="ico">▤</span> Budget</a>
       <a href="{{ url_for('transactions_page') }}" class="{{ 'on' if active == 'transactions' }}"><span class="ico">≡</span> Opérations</a>
       <a href="{{ url_for('import_form') }}" class="{{ 'on' if active == 'import' }}"><span class="ico">↧</span> Import</a>
-      <a href="{{ url_for('cards_page') }}" class="{{ 'on' if active == 'cards' }}"><span class="ico">▤</span> Cartes différées</a>
 
       <div class="nav-label">Suivi</div>
+      <a href="{{ url_for('cards_page') }}" class="{{ 'on' if active == 'cards' }}"><span class="ico">▭</span> Cartes différées</a>
       <a href="{{ url_for('insurance_page') }}" class="{{ 'on' if active == 'insurance' }}"><span class="ico">▣</span> Assurances</a>
       <a href="{{ url_for('savings_page') }}" class="{{ 'on' if active == 'savings' }}"><span class="ico">◆</span> Épargne</a>
       <a href="{{ url_for('analytics_page') }}" class="{{ 'on' if active == 'analytics' }}"><span class="ico">◎</span> Analyses</a>
@@ -77,7 +77,7 @@
   <a href="{{ url_for('transactions_page') }}" class="{{ 'on' if active == 'transactions' }}"><span class="ico">≡</span> Opé.</a>
   <a href="{{ url_for('import_form') }}" class="{{ 'on' if active == 'import' }}"><span class="ico">↧</span> Import</a>
   <button type="button" data-sheet-open
-          class="{{ 'on' if active in ['cards', 'insurance', 'savings', 'analytics', 'envelopes', 'rules', 'accounts', 'settings'] }}">
+          class="{{ 'on' if active in ['cards', 'insurance', 'savings', 'analytics', 'envelopes', 'rules', 'accounts', 'onboarding', 'settings'] }}">
     <span class="ico">☰</span> Plus
   </button>
 </nav>
@@ -87,7 +87,7 @@
   <div class="sheet-panel" role="dialog" aria-label="Navigation">
     <div class="sheet-grip"></div>
     <div class="sheet-links">
-      <a href="{{ url_for('cards_page') }}" class="{{ 'on' if active == 'cards' }}"><span class="ico">▤</span> Cartes différées</a>
+      <a href="{{ url_for('cards_page') }}" class="{{ 'on' if active == 'cards' }}"><span class="ico">▭</span> Cartes différées</a>
       <a href="{{ url_for('insurance_page') }}" class="{{ 'on' if active == 'insurance' }}"><span class="ico">▣</span> Assurances</a>
       <a href="{{ url_for('savings_page') }}" class="{{ 'on' if active == 'savings' }}"><span class="ico">◆</span> Épargne</a>
       <a href="{{ url_for('analytics_page') }}" class="{{ 'on' if active == 'analytics' }}"><span class="ico">◎</span> Analyses</a>
